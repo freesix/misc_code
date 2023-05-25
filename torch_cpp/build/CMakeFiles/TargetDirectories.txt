@@ -1,0 +1,3 @@
+/home/freesix/misc_code/torch_cpp/build/CMakeFiles/mnist.dir
+/home/freesix/misc_code/torch_cpp/build/CMakeFiles/edit_cache.dir
+/home/freesix/misc_code/torch_cpp/build/CMakeFiles/rebuild_cache.dir

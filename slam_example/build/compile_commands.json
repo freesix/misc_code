@@ -1,0 +1,8 @@
+[
+{
+  "directory": "/home/freesix/misc_code/slam_example/build",
+  "command": "/usr/bin/clang++ -I/usr/local/include/eigen3 -g -o CMakeFiles/eigenMatrix.dir/eigenMatrix.cpp.o -c /home/freesix/misc_code/slam_example/useEigen/eigenMatrix.cpp",
+  "file": "/home/freesix/misc_code/slam_example/useEigen/eigenMatrix.cpp",
+  "output": "CMakeFiles/eigenMatrix.dir/eigenMatrix.cpp.o"
+}
+]
