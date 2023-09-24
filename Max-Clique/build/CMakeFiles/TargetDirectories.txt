@@ -1,0 +1,3 @@
+/home/freesix/misc_code/Max-Clique/build/CMakeFiles/Max-Clique.dir
+/home/freesix/misc_code/Max-Clique/build/CMakeFiles/edit_cache.dir
+/home/freesix/misc_code/Max-Clique/build/CMakeFiles/rebuild_cache.dir

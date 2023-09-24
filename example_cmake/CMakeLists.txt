@@ -24,3 +24,9 @@ add_executable(opencv_example example.cpp)
 
 # Link your application with OpenCV libraries
 target_link_libraries(opencv_example PRIVATE ${OpenCV_LIBS})
+
+add_executable(cloning_gui cloning_gui.cpp)
+target_link_libraries(cloning_gui ${OpenCV_LIBS})
+
+add_executable(houghlines houghlines.cpp)
+target_link_libraries(houghlines ${OpenCV_LIBS})

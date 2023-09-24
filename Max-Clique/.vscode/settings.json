@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.launch": "xml",
+        "cmath": "cpp",
+        "complex": "cpp",
+        "core": "cpp"
+    }
+}
