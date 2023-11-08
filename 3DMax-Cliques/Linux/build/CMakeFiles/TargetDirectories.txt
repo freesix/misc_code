@@ -1,0 +1,3 @@
+/home/freesix/3DMax-Cliques/Linux/build/CMakeFiles/MAC.dir
+/home/freesix/3DMax-Cliques/Linux/build/CMakeFiles/edit_cache.dir
+/home/freesix/3DMax-Cliques/Linux/build/CMakeFiles/rebuild_cache.dir

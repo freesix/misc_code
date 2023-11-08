@@ -1,0 +1,21 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/freesix/far_planner_ws/install/dsvplanner/local/lib/python3.10/dist-packages",
+        "/home/freesix/far_planner_ws/install/volumetric_msgs/local/lib/python3.10/dist-packages",
+        "/home/freesix/far_planner_ws/install/visualization_tools/local/lib/python3.10/dist-packages",
+        "/home/freesix/far_planner_ws/install/graph_planner/local/lib/python3.10/dist-packages",
+        "/home/freesix/far_planner_ws/install/graph_utils/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/freesix/far_planner_ws/install/dsvplanner/local/lib/python3.10/dist-packages",
+        "/home/freesix/far_planner_ws/install/volumetric_msgs/local/lib/python3.10/dist-packages",
+        "/home/freesix/far_planner_ws/install/visualization_tools/local/lib/python3.10/dist-packages",
+        "/home/freesix/far_planner_ws/install/graph_planner/local/lib/python3.10/dist-packages",
+        "/home/freesix/far_planner_ws/install/graph_utils/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ],
+    "ros.distro": "humble"
+}

@@ -1,0 +1,31 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/freesix/far_planner_ws/install/dsvplanner/include/**",
+        "/home/freesix/far_planner_ws/install/octomap_world/include/**",
+        "/home/freesix/far_planner_ws/install/volumetric_msgs/include/**",
+        "/home/freesix/far_planner_ws/install/velodyne_gazebo_plugins/include/**",
+        "/home/freesix/far_planner_ws/install/graph_planner/include/**",
+        "/home/freesix/far_planner_ws/install/graph_utils/include/**",
+        "/home/freesix/far_planner_ws/install/misc_utils/include/**",
+        "/home/freesix/far_planner_ws/install/minkindr_conversions/include/**",
+        "/home/freesix/far_planner_ws/install/joy/include/**",
+        "/opt/ros/humble/include/**",
+        "/usr/include/**",
+        "/home/freesix/misc_code/slam_in_autonomous_driving-master/thirdparty/**",
+        "/home/freesix/misc_code/slam_in_autonomous_driving-master/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}
