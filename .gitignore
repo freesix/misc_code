@@ -1,3 +1,5 @@
+*/.vscode/*
+*/build/*
 cmake_test/.vscode
 cmake_test/build 
 
