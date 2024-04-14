@@ -7,4 +7,3 @@
 * Max-Clique：毕业论文的代码
 * Point-GNN.pytorhc-master：Point-GNN代码，pytorch版
 * Point-LIO：此篇论文的代码，打了注释
-* slam_in_autonomous_driving：一个slam仿真环境
