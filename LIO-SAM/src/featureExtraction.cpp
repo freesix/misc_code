@@ -17,29 +17,29 @@ class FeatureExtraction : public ParamServer
 
 public:
 
-    rclcpp::Subscription<lio_sam::msg::CloudInfo>::SharedPtr subLaserCloudInfo;
+    rclcpp::Subscription<lio_sam::msg::CloudInfo>::SharedPtr subLaserCloudInfo; // 雷达点云信息订阅器
 
     rclcpp::Publisher<lio_sam::msg::CloudInfo>::SharedPtr pubLaserCloudInfo;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubCornerPoints;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubSurfacePoints;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubCornerPoints; // 角点特征发布器
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubSurfacePoints; // 平面点特征发布器
 
-    pcl::PointCloud<PointType>::Ptr extractedCloud;
-    pcl::PointCloud<PointType>::Ptr cornerCloud;
-    pcl::PointCloud<PointType>::Ptr surfaceCloud;
+    pcl::PointCloud<PointType>::Ptr extractedCloud; 
+    pcl::PointCloud<PointType>::Ptr cornerCloud; // 角点点云
+    pcl::PointCloud<PointType>::Ptr surfaceCloud; // 平面点点云
 
-    pcl::VoxelGrid<PointType> downSizeFilter;
+    pcl::VoxelGrid<PointType> downSizeFilter; // 降采样滤波器(降低角点和平面点密度)
 
     lio_sam::msg::CloudInfo cloudInfo;
     std_msgs::msg::Header cloudHeader;
 
-    std::vector<smoothness_t> cloudSmoothness;
-    float *cloudCurvature;
+    std::vector<smoothness_t> cloudSmoothness; // 点云平滑度缓存(每个元素包含点的曲率和索引)
+    float *cloudCurvature;  // 点云中的曲率
     int *cloudNeighborPicked;
     int *cloudLabel;
 
     FeatureExtraction(const rclcpp::NodeOptions & options) :
         ParamServer("lio_sam_featureExtraction", options)
-    {
+    {   // 订阅前面经过去畸变的点云信息
         subLaserCloudInfo = create_subscription<lio_sam::msg::CloudInfo>(
             "lio_sam/deskew/cloud_info", qos,
             std::bind(&FeatureExtraction::laserCloudInfoHandler, this, std::placeholders::_1));
@@ -73,15 +73,15 @@ public:
     {
         cloudInfo = *msgIn; // new cloud info
         cloudHeader = msgIn->header; // new cloud header
-        pcl::fromROSMsg(msgIn->cloud_deskewed, *extractedCloud); // new cloud for extraction
+        pcl::fromROSMsg(msgIn->cloud_deskewed, *extractedCloud); // 将去畸变的点云信息转换为pcl格式，用于后续处理
 
-        calculateSmoothness();
+        calculateSmoothness(); // 计算点云中的曲率
 
-        markOccludedPoints();
+        markOccludedPoints(); // 标记遮挡点和平行光束点，避免后面进行错误的特征提取
 
-        extractFeatures();
+        extractFeatures(); // 提取点云特征
 
-        publishFeatureCloud();
+        publishFeatureCloud(); // 发布特征点信息
     }
 
     void calculateSmoothness()
@@ -101,12 +101,14 @@ public:
             cloudNeighborPicked[i] = 0;
             cloudLabel[i] = 0;
             // cloudSmoothness for sorting
-            // cloudSmoothness一个结构体类型的容器，包含平滑度值和索引
+            // 缓存点的曲率和索引，方便后面对曲率进行排序
             cloudSmoothness[i].value = cloudCurvature[i]; // 平滑度
             cloudSmoothness[i].ind = i;  // 对应点索引
         }
     }
-
+    /**
+     * @brief 标记遮挡点和平行光束点
+     */
     void markOccludedPoints()
     {
         int cloudSize = extractedCloud->points.size();
@@ -118,10 +120,11 @@ public:
             // occluded points
             float depth1 = cloudInfo.point_range[i];
             float depth2 = cloudInfo.point_range[i+1];
-            int columnDiff = std::abs(int(cloudInfo.point_col_ind[i+1] - cloudInfo.point_col_ind[i]));
-            if (columnDiff < 10){
+            int columnDiff = std::abs(int(cloudInfo.point_col_ind[i+1] - cloudInfo.point_col_ind[i])); // 获取两个点的列索引差值
+            if (columnDiff < 10){ // 如果列索引差较小，即两点在扫描角度上靠得很近
                 // 10 pixel diff in range image
-                if (depth1 - depth2 > 0.3){
+                // 如果深度值相差较大，则将相邻得几个点标记为遮挡点，并标记为已选择过，后面不会对这些点进行特征提取
+                if (depth1 - depth2 > 0.3){ 
                     cloudNeighborPicked[i - 5] = 1;
                     cloudNeighborPicked[i - 4] = 1;
                     cloudNeighborPicked[i - 3] = 1;
@@ -137,10 +140,10 @@ public:
                     cloudNeighborPicked[i + 6] = 1;
                 }
             }
-            // parallel beam
+            // 获取当前点与左右相邻之间的深度差
             float diff1 = std::abs(float(cloudInfo.point_range[i-1] - cloudInfo.point_range[i]));
             float diff2 = std::abs(float(cloudInfo.point_range[i+1] - cloudInfo.point_range[i]));
-
+            // 如果相邻深度差都较大，则认为当前点为平行光束点，标记为已选择过，后续不会对这些点进行特征提取
             if (diff1 > 0.02 * cloudInfo.point_range[i] && diff2 > 0.02 * cloudInfo.point_range[i])
                 cloudNeighborPicked[i] = 1;
         }
@@ -157,29 +160,29 @@ public:
         for (int i = 0; i < N_SCAN; i++) // 对多线激光每一线内点循环
         {
             surfaceCloudScan->clear();
-
+            // 将每根线均分为六段，分别对每一段进行特征提取
             for (int j = 0; j < 6; j++)
             {
                 // 计算每一线中每一段的开始点和结束点
                 int sp = (cloudInfo.start_ring_index[i] * (6 - j) + cloudInfo.end_ring_index[i] * j) / 6;
                 int ep = (cloudInfo.start_ring_index[i] * (5 - j) + cloudInfo.end_ring_index[i] * (j + 1)) / 6 - 1;
 
-                if (sp >= ep)
+                if (sp >= ep) 
                     continue;
                 // 基于by_value()对迭代器之间的数进行排序
-                // 对每一段内平滑度排序
+                // 对每一段内平滑度排序，从小到大
                 std::sort(cloudSmoothness.begin()+sp, cloudSmoothness.begin()+ep, by_value());
 
                 int largestPickedNum = 0;
-                for (int k = ep; k >= sp; k--)
+                for (int k = ep; k >= sp; k--) // 曲率倒序索引，从大到小
                 {
-                    int ind = cloudSmoothness[k].ind;
+                    int ind = cloudSmoothness[k].ind; // 获取当前点检索点的索引
                     // 判断cloudNeighborPicked中是否标记为遮挡点，平滑度是否大于阈值
                     // 角点判断
                     if (cloudNeighborPicked[ind] == 0 && cloudCurvature[ind] > edgeThreshold) 
                     {
                         largestPickedNum++;
-                        if (largestPickedNum <= 20){ // 每段存储20个角点
+                        if (largestPickedNum <= 20){ // 每段最多提取20个角点
                             cloudLabel[ind] = 1;
                             cornerCloud->push_back(extractedCloud->points[ind]);
                         } else {
@@ -187,7 +190,7 @@ public:
                         }
 
                         cloudNeighborPicked[ind] = 1; // 标记此点已经被处理过了，已经标记为角点了
-                        // 判角点前后各五个点是否与其相差过大，是则标记为已经处理过了，防止焦点聚集
+                        // 判角点前后各五个点是否与其相差过大，是则标记为已经处理过了，防止角点聚集
                         for (int l = 1; l <= 5; l++)
                         {
                             int columnDiff = std::abs(int(cloudInfo.point_col_ind[ind + l] - cloudInfo.point_col_ind[ind + l - 1]));
@@ -230,7 +233,7 @@ public:
                         }
                     }
                 }
-
+                // 根据标记获取平面点
                 for (int k = sp; k <= ep; k++)
                 {
                     if (cloudLabel[k] <= 0){
@@ -242,7 +245,7 @@ public:
             surfaceCloudScanDS->clear();
             downSizeFilter.setInputCloud(surfaceCloudScan);
             downSizeFilter.filter(*surfaceCloudScanDS);
-
+            // 保存降采样后的平面点
             *surfaceCloud += *surfaceCloudScanDS;
         }
     }
@@ -258,12 +261,12 @@ public:
     void publishFeatureCloud()
     {
         // free cloud info memory
-        freeCloudInfoMemory();
+        freeCloudInfoMemory(); // 释放内存
         // save newly extracted features
-        cloudInfo.cloud_corner = publishCloud(pubCornerPoints,  cornerCloud,  cloudHeader.stamp, lidarFrame);
-        cloudInfo.cloud_surface = publishCloud(pubSurfacePoints, surfaceCloud, cloudHeader.stamp, lidarFrame);
+        cloudInfo.cloud_corner = publishCloud(pubCornerPoints,  cornerCloud,  cloudHeader.stamp, lidarFrame); // 保存并发布角点
+        cloudInfo.cloud_surface = publishCloud(pubSurfacePoints, surfaceCloud, cloudHeader.stamp, lidarFrame); // 保存并发布平面点
         // publish to mapOptimization
-        pubLaserCloudInfo->publish(cloudInfo);
+        pubLaserCloudInfo->publish(cloudInfo); // 发布点云信息
     }
 };
 

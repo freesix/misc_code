@@ -52,8 +52,8 @@ class mapOptimization : public ParamServer
 public:
 
     // gtsam
-    NonlinearFactorGraph gtSAMgraph;
-    Values initialEstimate;
+    NonlinearFactorGraph gtSAMgraph; // 非线性因子图
+    Values initialEstimate; 
     Values optimizedEstimate;
     ISAM2 *isam;
     Values isamCurrentEstimate;
