@@ -29,7 +29,7 @@ find_package(GTSAM REQUIRED)
 find_package(Eigen REQUIRED)
 
 include_directories(
-  include/lio_sam
+  "include"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv" DEPENDENCIES std_msgs sensor_msgs)

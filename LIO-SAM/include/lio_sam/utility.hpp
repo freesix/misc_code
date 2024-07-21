@@ -310,7 +310,11 @@ public:
 
         usleep(100);
     }
-
+    /**
+     * @brief 将imu数据转换到雷达坐标系下
+     * @param imu_in 输入的imu数据
+     * @return sensor_msgs::msg::Imu 坐标转换后的imu数据
+     */
     sensor_msgs::msg::Imu imuConverter(const sensor_msgs::msg::Imu& imu_in)
     {
         sensor_msgs::msg::Imu imu_out = imu_in;
