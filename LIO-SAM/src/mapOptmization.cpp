@@ -80,41 +80,50 @@ public:
     std::deque<nav_msgs::msg::Odometry> gpsQueue;
     lio_sam::msg::CloudInfo cloudInfo;
 
-    vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFrames;
-    vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFrames;
+    vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFrames;// 历史所有关键帧的角点集合(降采样)
+    vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFrames; // 历史所有关键帧的平面点集合(降采样)
     
-    pcl::PointCloud<PointType>::Ptr cloudKeyPoses3D;
+    pcl::PointCloud<PointType>::Ptr cloudKeyPoses3D; // 历史关键帧位姿(位置)
+    // 历史关键帧位姿
     pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D;
     pcl::PointCloud<PointType>::Ptr copy_cloudKeyPoses3D;
     pcl::PointCloud<PointTypePose>::Ptr copy_cloudKeyPoses6D;
-
+    // 当前激光帧角点集合
     pcl::PointCloud<PointType>::Ptr laserCloudCornerLast; // corner feature set from odoOptimization
+    // 当前激光帧平面点集合
     pcl::PointCloud<PointType>::Ptr laserCloudSurfLast; // surf feature set from odoOptimization
+    // 当前激光真角点集合，降采样
     pcl::PointCloud<PointType>::Ptr laserCloudCornerLastDS; // downsampled corner feature set from odoOptimization
+    // 当前激光帧平面点集合，降采样
     pcl::PointCloud<PointType>::Ptr laserCloudSurfLastDS; // downsampled surf feature set from odoOptimization
-
-    pcl::PointCloud<PointType>::Ptr laserCloudOri;
-    pcl::PointCloud<PointType>::Ptr coeffSel;
-
+    // 当前帧与局部map匹配上了的角点，平面点，加入同一集合，后面是对应点的参数
+    pcl::PointCloud<PointType>::Ptr laserCloudOri; 
+    pcl::PointCloud<PointType>::Ptr coeffSel; 
+    // 当前帧与局部map匹配上了的角点，参数和标记
     std::vector<PointType> laserCloudOriCornerVec; // corner point holder for parallel computation
     std::vector<PointType> coeffSelCornerVec;
     std::vector<bool> laserCloudOriCornerFlag;
+    // 当前帧与局部map匹配上了的平面点，参数和标记
     std::vector<PointType> laserCloudOriSurfVec; // surf point holder for parallel computation
     std::vector<PointType> coeffSelSurfVec;
     std::vector<bool> laserCloudOriSurfFlag;
 
     map<int, pair<pcl::PointCloud<PointType>, pcl::PointCloud<PointType>>> laserCloudMapContainer;
+    // 局部map的角点集合
     pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMap;
+    // 局部map的平面点集合
     pcl::PointCloud<PointType>::Ptr laserCloudSurfFromMap;
+    // 局部map的角点集合，降采样
     pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMapDS;
+    // 局部map的平面点集合，降采样
     pcl::PointCloud<PointType>::Ptr laserCloudSurfFromMapDS;
-
+    // 局部关键帧构建的map点云，对应kd树，用于scan-to-map匹配
     pcl::KdTreeFLANN<PointType>::Ptr kdtreeCornerFromMap;
     pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurfFromMap;
 
     pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurroundingKeyPoses;
     pcl::KdTreeFLANN<PointType>::Ptr kdtreeHistoryKeyPoses;
-
+    // 降采样
     pcl::VoxelGrid<PointType> downSizeFilterCorner;
     pcl::VoxelGrid<PointType> downSizeFilterSurf;
     pcl::VoxelGrid<PointType> downSizeFilterICP;
@@ -130,10 +139,13 @@ public:
 
     bool isDegenerate = false;
     Eigen::Matrix<float, 6, 6> matP;
-
+    // 局部map角点数量
     int laserCloudCornerFromMapDSNum = 0;
+    // 局部map平面点数量
     int laserCloudSurfFromMapDSNum = 0;
+    // 当前帧角点数量
     int laserCloudCornerLastDSNum = 0;
+    // 当前帧平面点数量
     int laserCloudSurfLastDSNum = 0;
 
     bool aLoopIsClosed = false;
@@ -144,9 +156,11 @@ public:
     deque<std_msgs::msg::Float64MultiArray> loopInfoVec;
 
     nav_msgs::msg::Path globalPath;
-
+    // 当前帧位姿
     Eigen::Affine3f transPointAssociateToMap;
+    // 前一帧位姿
     Eigen::Affine3f incrementalOdometryAffineFront;
+    // 当前帧位姿
     Eigen::Affine3f incrementalOdometryAffineBack;
 
     std::unique_ptr<tf2_ros::TransformBroadcaster> br;
@@ -157,25 +171,31 @@ public:
         parameters.relinearizeThreshold = 0.1;
         parameters.relinearizeSkip = 1;
         isam = new ISAM2(parameters);
-
+        // 发布历史关键帧里程计
         pubKeyPoses = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/trajectory", 1);
+        // 发布局部关键帧map的特征点云
         pubLaserCloudSurround = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/map_global", 1);
+        // 发布激光里程计，rviz中表现为坐标轴
         pubLaserOdometryGlobal = create_publisher<nav_msgs::msg::Odometry>("lio_sam/mapping/odometry", qos);
+        // 发布激光里程计，它与上面的激光里程计基本一样，只是roll、pithch用imu数据加权平均一下，z做限制
         pubLaserOdometryIncremental = create_publisher<nav_msgs::msg::Odometry>(
             "lio_sam/mapping/odometry_incremental", qos);
+        // 发布里程计的路径，rviz表现为载体的运行轨迹
         pubPath = create_publisher<nav_msgs::msg::Path>("lio_sam/mapping/path", 1);
         br = std::make_unique<tf2_ros::TransformBroadcaster>(this);
-
+        // 订阅当前帧点云信息，来自featureExtraction
         subCloud = create_subscription<lio_sam::msg::CloudInfo>(
             "lio_sam/feature/cloud_info", qos,
             std::bind(&mapOptimization::laserCloudInfoHandler, this, std::placeholders::_1));
+        // 订阅GPS里程计
         subGPS = create_subscription<nav_msgs::msg::Odometry>(
             gpsTopic, 200,
             std::bind(&mapOptimization::gpsHandler, this, std::placeholders::_1));
+        // 订阅来自外部的闭环检测信息(不清楚没用上本程序)
         subLoop = create_subscription<std_msgs::msg::Float64MultiArray>(
             "lio_loop/loop_closure_detection", qos,
             std::bind(&mapOptimization::loopInfoHandler, this, std::placeholders::_1));
-
+        // 自定义地图保存操作
         auto saveMapService = [this](const std::shared_ptr<rmw_request_id_t> request_header, 
                             const std::shared_ptr<lio_sam::srv::SaveMap::Request> req, 
                             std::shared_ptr<lio_sam::srv::SaveMap::Response> res) -> void {
@@ -236,14 +256,20 @@ public:
             cout << "Saving map to pcd files completed\n" << endl;
             return;
         };
-        
+        // 发布保存地图的服务
         srvSaveMap = create_service<lio_sam::srv::SaveMap>("lio_sam/save_map", saveMapService);
+        // 发布闭环匹配关键帧局部map
         pubHistoryKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/icp_loop_closure_history_cloud", 1);
+        // 发布当前关键帧经过闭环优化后的位姿变换后的特征点云
         pubIcpKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/icp_loop_closure_history_cloud", 1);
+        // 发布闭环边，rviz中表现为闭环帧之间的连线
         pubLoopConstraintEdge = create_publisher<visualization_msgs::msg::MarkerArray>("/lio_sam/mapping/loop_closure_constraints", 1);
 
+        // 发布局部map降采样平面点集合
         pubRecentKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/map_local", 1);
+        // 发布历史帧(累加的)角点、平面点降采样集合
         pubRecentKeyFrame = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/cloud_registered", 1);
+        // 发布当前帧演示点云配准后的点云
         pubCloudRegisteredRaw = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/cloud_registered_raw", 1);
 
         downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
@@ -296,10 +322,41 @@ public:
 
         matP.setZero();
     }
-    // 处理雷达点云数据，订阅了来自点云特征提取后的数据
+    
+    /**
+     * 订阅当前激光帧点云信息，来自featureExtraction
+     * 1、当前帧位姿初始化
+     *   1) 如果是第一帧，用原始imu数据的RPY初始化当前帧位姿（旋转部分）
+     *   2) 后续帧，用imu里程计计算两帧之间的增量位姿变换，作用于前一帧的激光位姿，得到当前帧激光位姿
+     * 2、提取局部角点、平面点云集合，加入局部map
+     *   1) 对最近的一帧关键帧，搜索时空维度上相邻的关键帧集合，降采样一下
+     *   2) 对关键帧集合中的每一帧，提取对应的角点、平面点，加入局部map中
+     * 3、当前激光帧角点、平面点集合降采样
+     * 4、scan-to-map优化当前帧位姿
+     *   (1) 要求当前帧特征点数量足够多，且匹配的点数够多，才执行优化
+     *   (2) 迭代30次（上限）优化
+     *      1) 当前激光帧角点寻找局部map匹配点
+     *          a.更新当前帧位姿，将当前帧角点坐标变换到map系下，在局部map中查找5个最近点，距离小于1m，且5个点构成直线（用距离中心点的协方差矩阵，特征值进行判断），则认为匹配上了
+     *          b.计算当前帧角点到直线的距离、垂线的单位向量，存储为角点参数
+     *      2) 当前激光帧平面点寻找局部map匹配点
+     *          a.更新当前帧位姿，将当前帧平面点坐标变换到map系下，在局部map中查找5个最近点，距离小于1m，且5个点构成平面（最小二乘拟合平面），则认为匹配上了
+     *          b.计算当前帧平面点到平面的距离、垂线的单位向量，存储为平面点参数
+     *      3) 提取当前帧中与局部map匹配上了的角点、平面点，加入同一集合
+     *      4) 对匹配特征点计算Jacobian矩阵，观测值为特征点到直线、平面的距离，构建高斯牛顿方程，迭代优化当前位姿，存transformTobeMapped
+     *   (3)用imu原始RPY数据与scan-to-map优化后的位姿进行加权融合，更新当前帧位姿的roll、pitch，约束z坐标
+     * 5、设置当前帧为关键帧并执行因子图优化
+     *   1) 计算当前帧与前一帧位姿变换，如果变化太小，不设为关键帧，反之设为关键帧
+     *   2) 添加激光里程计因子、GPS因子、闭环因子
+     *   3) 执行因子图优化
+     *   4) 得到当前帧优化后位姿，位姿协方差
+     *   5) 添加cloudKeyPoses3D，cloudKeyPoses6D，更新transformTobeMapped，添加当前关键帧的角点、平面点集合
+     * 6、更新因子图中所有变量节点的位姿，也就是所有历史关键帧的位姿，更新里程计轨迹
+     * 7、发布激光里程计
+     * 8、发布里程计、点云、轨迹
+    */                        
     void laserCloudInfoHandler(const lio_sam::msg::CloudInfo::SharedPtr msgIn)
     {
-        // extract time stamp
+        // extract time stamp 当前激光帧时间戳
         timeLaserInfoStamp = msgIn->header.stamp;
         timeLaserInfoCur = stamp2Sec(msgIn->header.stamp);
 
@@ -309,28 +366,48 @@ public:
         pcl::fromROSMsg(msgIn->cloud_surface, *laserCloudSurfLast); // 当前帧的平面点点云
 
         std::lock_guard<std::mutex> lock(mtx);
-
+        // mapping执行频率控制
         static double timeLastProcessing = -1;
         // 判断两帧的时间间隔是否大于一定间隔
         if (timeLaserInfoCur - timeLastProcessing >= mappingProcessInterval)
         {
             timeLastProcessing = timeLaserInfoCur; // 更新上一次的时间戳
-
+            // 当前帧位姿初始化
+            // 1、如果是第一帧，用原始imu数据的RPY初始化当前帧位姿（旋转部分）
+            // 2、后续帧，用imu里程计计算两帧之间的增量位姿变换，作用于前一帧的激光位姿，得到当前帧激光位姿
             updateInitialGuess();
-
+            // 提取局部角点、平面点云集合，加入局部map
+            // 1、对最近的一帧关键帧，搜索时空维度上相邻的关键帧集合，降采样一下
+            // 2、对关键帧集合中的每一帧，提取对应的角点、平面点，加入局部map中
             extractSurroundingKeyFrames(); // 提取关键帧
 
             downsampleCurrentScan(); // 对当前关键帧的数据进行降采样
-
+                      // scan-to-map优化当前帧位姿
+            // 1、要求当前帧特征点数量足够多，且匹配的点数够多，才执行优化
+            // 2、迭代30次（上限）优化
+            //    1) 当前激光帧角点寻找局部map匹配点
+            //       a.更新当前帧位姿，将当前帧角点坐标变换到map系下，在局部map中查找5个最近点，距离小于1m，且5个点构成直线（用距离中心点的协方差矩阵，特征值进行判断），则认为匹配上了
+            //       b.计算当前帧角点到直线的距离、垂线的单位向量，存储为角点参数
+            //    2) 当前激光帧平面点寻找局部map匹配点
+            //       a.更新当前帧位姿，将当前帧平面点坐标变换到map系下，在局部map中查找5个最近点，距离小于1m，且5个点构成平面（最小二乘拟合平面），则认为匹配上了
+            //       b.计算当前帧平面点到平面的距离、垂线的单位向量，存储为平面点参数
+            //    3) 提取当前帧中与局部map匹配上了的角点、平面点，加入同一集合
+            //    4) 对匹配特征点计算Jacobian矩阵，观测值为特征点到直线、平面的距离，构建高斯牛顿方程，迭代优化当前位姿，存transformTobeMapped
+            // 3、用imu原始RPY数据与scan-to-map优化后的位姿进行加权融合，更新当前帧位姿的roll、pitch，约束z坐标                        
             scan2MapOptimization();  // 匹配，采用的是scan-to-map的方法
-
+            // 设置当前帧为关键帧并执行因子图优化
+            // 1、计算当前帧与前一帧位姿变换，如果变化太小，不设为关键帧，反之设为关键帧
+            // 2、添加激光里程计因子、GPS因子、闭环因子
+            // 3、执行因子图优化
+            // 4、得到当前帧优化后位姿，位姿协方差
+            // 5、添加cloudKeyPoses3D，cloudKeyPoses6D，更新transformTobeMapped，添加当前关键帧的角点、平面点集合
             saveKeyFramesAndFactor(); // 保存关键帧因子，执行图优化
-
+            // 更新因子图中所有变量节点的位姿，也就是所有历史关键帧的位姿，更新里程计轨迹
             correctPoses(); // 优化后的位姿进行更新，矫正位姿
 
             publishOdometry(); // 发布里程计信息
-
-            publishFrames();  // 发布关键帧
+            // 发布里程计、点云、轨迹
+            publishFrames();  
         }
     }
 
@@ -786,17 +863,22 @@ public:
     
 
 
-
+    /**
+     * @brief 当前帧位姿初始化
+     * 1、如果是第一帧，用原始imu数据的RPY初始化当前帧位姿（旋转部分）
+     * 2、后续帧，用imu里程计计算两帧之间的增量位姿变换，作用于前一帧的激光位姿，得到当前帧激光位姿
+    */
     void updateInitialGuess()
     {
         // save current transformation before any processing
+        // 前一帧的激光位姿
         incrementalOdometryAffineFront = trans2Affine3f(transformTobeMapped);
         // 前一帧的初始化姿态角（来自原始imu数据），用于估计第一帧的位姿
         static Eigen::Affine3f lastImuTransformation;
         // initialization
         // 如果没有关键帧数据，利用imu信息初始化当前的数据帧到上次更新时的相对位姿变换
         if (cloudKeyPoses3D->points.empty())
-        {
+        {   // 当前帧位姿的旋转部分，哦那个激光帧信息中的RPY(来自imu原始数据)初始化
             transformTobeMapped[0] = cloudInfo.imu_roll_init;
             transformTobeMapped[1] = cloudInfo.imu_pitch_init;
             transformTobeMapped[2] = cloudInfo.imu_yaw_init;
@@ -813,22 +895,38 @@ public:
         // TransformTobeMapped）与相对变换计算当前帧的位姿，存transformTobeMapped
         static bool lastImuPreTransAvailable = false;
         static Eigen::Affine3f lastImuPreTransformation;
+        // odome_available和imu_available是来源于imageProjection.cpp中
+        // imu_available表示激光帧内有没有imu数据，odom_available表示有没有挨着激光帧的imu里程计数据
+        // 一般都是有的
         if (cloudInfo.odom_available == true)
-        {
+        {   // cloudInfo来自featureExtraction.cpp中发布的lio_sam/feature/cloud_info
+            //而其中的initialGuessX等信息本质上来源于ImageProjection.cpp发布的deskew/cloud_info信息，
+            //而deskew/cloud_info中的initialGuessX则来源于ImageProjection.cpp中的回调函数odometryHandler，
+            //odometryHandler订阅的是imuPreintegration.cpp发布的odometry/imu_incremental话题，
+            //该话题发布的xyz是imu在前一帧雷达基础上的增量位姿
+            //纠正一个观点：增量位姿，指的绝不是预积分位姿！！是在前一帧雷达的基础上(包括该基础!!)的（基础不是0）的位姿
+            //当前帧的初始估计位姿（来自imu里程计），后面用来计算增量位姿变换
             Eigen::Affine3f transBack = pcl::getTransformation(
                 cloudInfo.initial_guess_x, cloudInfo.initial_guess_y, cloudInfo.initial_guess_z,
                 cloudInfo.initial_guess_roll, cloudInfo.initial_guess_pitch, cloudInfo.initial_guess_yaw);
             if (lastImuPreTransAvailable == false)
-            {
+            {   // 赋值给前一帧
+                // 这一段只调用一次，就是初始化时，把imu位姿赋值给lastImuPreTransformation
                 lastImuPreTransformation = transBack;
                 lastImuPreTransAvailable = true;
             } else {
+                // 当前帧相对于前一帧的位姿变换，imu里程计计算得到
+                // lastImuPreTransformation就是上一帧激光时刻的imu位姿,transBack是这一帧时刻的imu位姿
+                // 求完逆相乘以后才是增量，绝不可把imu_incremental发布的当成是两激光间的增量
                 Eigen::Affine3f transIncre = lastImuPreTransformation.inverse() * transBack;
+                // 前一帧的位姿
                 Eigen::Affine3f transTobe = trans2Affine3f(transformTobeMapped);
+                // 当前帧的位姿
                 Eigen::Affine3f transFinal = transTobe * transIncre;
+                // 将transFinal传入，结果输出至transformTobeMapped中
                 pcl::getTranslationAndEulerAngles(transFinal, transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5], 
                                                               transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
-
+                // 当前帧初始位姿赋值作为前一帧
                 lastImuPreTransformation = transBack;
 
                 lastImuTransformation = pcl::getTransformation(0, 0, 0, cloudInfo.imu_roll_init, cloudInfo.imu_pitch_init, cloudInfo.imu_yaw_init); // save imu before return;
@@ -837,6 +935,7 @@ public:
         }
 
         // use imu incremental estimation for pose guess (only rotation)
+        // 只在第一帧调用(上面的return)，用imu数据初始化当前帧位姿，仅初始化旋转部分
         if (cloudInfo.imu_available == true)
         {
             Eigen::Affine3f transBack = pcl::getTransformation(0, 0, 0, cloudInfo.imu_roll_init, cloudInfo.imu_pitch_init, cloudInfo.imu_yaw_init);
@@ -944,7 +1043,9 @@ public:
         if (laserCloudMapContainer.size() > 1000)
             laserCloudMapContainer.clear();
     }
-
+    /**
+     * @brief 提取局部角点、平面点加入局部map
+    */
     void extractSurroundingKeyFrames()
     {
         if (cloudKeyPoses3D->points.empty() == true)
@@ -1289,29 +1390,32 @@ public:
     }
 
     void scan2MapOptimization()
-    {
+    {   // 根据现有地图与最新点云数据进行匹配从而更新机器人精确位姿和融合建图
+        // 分为角点优化，平面点优化，配准和更新部分。
+        // 优化过程和里程计计算类似，通过计算点到直线或者平面的距离看，构建优化公式再用LM算法进行优化。
         if (cloudKeyPoses3D->points.empty())
             return;
 
         if (laserCloudCornerLastDSNum > edgeFeatureMinValidNum && laserCloudSurfLastDSNum > surfFeatureMinValidNum)
-        {
+        {   // 构建kd树
             kdtreeCornerFromMap->setInputCloud(laserCloudCornerFromMapDS);
             kdtreeSurfFromMap->setInputCloud(laserCloudSurfFromMapDS);
-
+            // 迭代30次
             for (int iterCount = 0; iterCount < 30; iterCount++)
             {
                 laserCloudOri->clear();
                 coeffSel->clear();
-
+                // 边缘点匹配优化
                 cornerOptimization();
+                // 平面点匹配优化
                 surfOptimization();
-
+                // 组合优化多项式系数
                 combineOptimizationCoeffs();
 
                 if (LMOptimization(iterCount) == true)
                     break;              
             }
-
+            // 使用了9轴imu的orientation与做transformTobeMapped插值，并且roll和pitch受到常量阈值约束(权重)
             transformUpdate();
         } else {
             RCLCPP_WARN(get_logger(), "Not enough features! Only %d edge and %d planar features available.", laserCloudCornerLastDSNum, laserCloudSurfLastDSNum);
