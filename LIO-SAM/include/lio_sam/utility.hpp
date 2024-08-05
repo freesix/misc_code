@@ -70,16 +70,16 @@ public:
     std::string robot_id;
 
     //Topics
-    string pointCloudTopic;
-    string imuTopic;
-    string odomTopic;
-    string gpsTopic;
+    string pointCloudTopic; // 原始点云数据话题
+    string imuTopic; // 原始imu数据话题
+    string odomTopic; // imu里程计话题，在imuPreintegration中对imu预积分得到
+    string gpsTopic; // 原始gps经过robot_localization包计算得到
 
     //Frames
-    string lidarFrame;
-    string baselinkFrame;
-    string odometryFrame;
-    string mapFrame;
+    string lidarFrame; // 激光雷达坐标系。点云数据坐标系，与lidarFarme一致，但不同雷达名称不同
+    string baselinkFrame; // 机器人底盘坐标系
+    string odometryFrame; // 里程计坐标系
+    string mapFrame; // 地图坐标系，全局坐标系(如果odometryFrame和其第一帧对齐，那两者相同)
 
     // GPS Settings
     bool useImuHeadingInitialization;
@@ -89,7 +89,7 @@ public:
 
     // Save pcd
     bool savePCD;
-    string savePCDDirectory;
+    string savePCDDirectory; // 保存地图pcd文件的路径
 
     // Lidar Sensor Configuration
     SensorType sensor = SensorType::OUSTER;
@@ -100,52 +100,52 @@ public:
     float lidarMaxRange;
 
     // IMU
-    float imuAccNoise;
-    float imuGyrNoise;
-    float imuAccBiasN;
-    float imuGyrBiasN;
-    float imuGravity;
-    float imuRPYWeight;
-    vector<double> extRotV;
-    vector<double> extRPYV;
-    vector<double> extTransV;
-    Eigen::Matrix3d extRot;
-    Eigen::Matrix3d extRPY;
-    Eigen::Vector3d extTrans;
-    Eigen::Quaterniond extQRPY;
+    float imuAccNoise; // IMU加速度噪声协方差，可以用Allen方差标定，这里设三轴相同
+    float imuGyrNoise; // IMU角速度噪声协方差，可以用Allen方差标定，这里设三轴相同
+    float imuAccBiasN; // IMU加速度偏差，三轴统一
+    float imuGyrBiasN; // IMU角速度偏差，三轴统一
+    float imuGravity; // 重力加速度值
+    float imuRPYWeight; // 算法中使用IMU的roll pitch角对激光里程计的结果加权融合
+    vector<double> extRotV;  // IMU加速度向量到雷达坐标系的旋转
+    vector<double> extRPYV; // IMU角速度向量到雷达坐标系的旋转
+    vector<double> extTransV; // IMU到雷达坐标系的平移 
+    Eigen::Matrix3d extRot; // IMU加速度向量到雷达坐标系的旋转
+    Eigen::Matrix3d extRPY; // IMU角速度向量到雷达坐标系的旋转
+    Eigen::Vector3d extTrans; // IMU到雷达坐标系的平移
+    Eigen::Quaterniond extQRPY; // IMU角速度向量到雷达坐标系的旋转(四元数形式)
 
     // LOAM
-    float edgeThreshold;
-    float surfThreshold;
-    int edgeFeatureMinValidNum;
-    int surfFeatureMinValidNum;
+    float edgeThreshold; // 边缘特征点阈值
+    float surfThreshold; // 平面特征点阈值
+    int edgeFeatureMinValidNum; // 边缘特征点最小数量
+    int surfFeatureMinValidNum; // 平面特征点最小数量
 
     // voxel filter paprams
-    float odometrySurfLeafSize;
+    float odometrySurfLeafSize; 
     float mappingCornerLeafSize;
     float mappingSurfLeafSize ;
 
-    float z_tollerance;
-    float rotation_tollerance;
+    float z_tollerance; // 限制z轴平移的大小
+    float rotation_tollerance; // 限制roll、pitch角的大小
 
     // CPU Params
-    int numberOfCores;
-    double mappingProcessInterval;
+    int numberOfCores; // 在点云匹配中使用的CPU核心数量
+    double mappingProcessInterval; // 点云帧处理时间间隔
 
     // Surrounding map
-    float surroundingkeyframeAddingDistThreshold;
-    float surroundingkeyframeAddingAngleThreshold;
-    float surroundingKeyframeDensity;
-    float surroundingKeyframeSearchRadius;
+    float surroundingkeyframeAddingDistThreshold; // 当前帧与上一帧距离大于此阈值才能作为关键帧
+    float surroundingkeyframeAddingAngleThreshold; // 当前帧与上一帧角度大于此阈值才能作为关键帧
+    float surroundingKeyframeDensity; // 构建局部地图对采用的关键帧做降采样
+    float surroundingKeyframeSearchRadius; // 构建局部地图时关键帧的检索半径
 
     // Loop closure
-    bool  loopClosureEnableFlag;
-    float loopClosureFrequency;
-    int   surroundingKeyframeSize;
-    float historyKeyframeSearchRadius;
-    float historyKeyframeSearchTimeDiff;
-    int   historyKeyframeSearchNum;
-    float historyKeyframeFitnessScore;
+    bool  loopClosureEnableFlag; // 回环检测线程的执行标志
+    float loopClosureFrequency;  // 回环检测线程执行的频率
+    int   surroundingKeyframeSize; // 回环检测构建局部地图的最大关键帧数量
+    float historyKeyframeSearchRadius; // 回环检测时关键帧的检索半径
+    float historyKeyframeSearchTimeDiff; // 回环检测时关键帧检索的时间范围
+    int   historyKeyframeSearchNum; // 执行回环检测时融合局部地图对目标关键帧执行+-25帧的关键帧融合
+    float historyKeyframeFitnessScore; // 执行回环检测时用ICP做点云匹配，阈值大于0.3认为匹配失败
 
     // global map visualization radius
     float globalMapVisualizationSearchRadius;
@@ -311,7 +311,7 @@ public:
         usleep(100);
     }
     /**
-     * @brief 将imu数据转换到雷达坐标系下
+     * @brief 将imu数据转换到雷达坐标系下，只做了旋转，没有平移
      * @param imu_in 输入的imu数据
      * @return sensor_msgs::msg::Imu 坐标转换后的imu数据
      */
@@ -332,7 +332,7 @@ public:
         imu_out.angular_velocity.z = gyr.z();
         // rotate roll pitch yaw
         Eigen::Quaterniond q_from(imu_in.orientation.w, imu_in.orientation.x, imu_in.orientation.y, imu_in.orientation.z);
-        Eigen::Quaterniond q_final = q_from * extQRPY;
+        Eigen::Quaterniond q_final = q_from * extQRPY; // IMU位姿*IMU到雷达坐标系的旋转
         imu_out.orientation.x = q_final.x();
         imu_out.orientation.y = q_final.y();
         imu_out.orientation.z = q_final.z();
@@ -409,7 +409,10 @@ float pointDistance(PointType p1, PointType p2)
 {
     return sqrt((p1.x-p2.x)*(p1.x-p2.x) + (p1.y-p2.y)*(p1.y-p2.y) + (p1.z-p2.z)*(p1.z-p2.z));
 }
-
+/**
+ * @details 本算法中默认的QoS，保留最新的1个消息，不保证消息的可靠性，消息的持久性为瞬时，
+ * 消息的生命周期为默认值，消息的活跃度为系统默认值，消息的活跃度持续时间为默认值，消息的历史性为系统默认值
+*/
 rmw_qos_profile_t qos_profile{
     RMW_QOS_POLICY_HISTORY_KEEP_LAST,
     1,
@@ -428,12 +431,15 @@ auto qos = rclcpp::QoS(
         qos_profile.depth
     ),
     qos_profile);
-
+/**
+ * @details imu 原始数据，因为imu数据小且频率高，所以depth设为2000，缓存中保留最新的2000
+ * 个消息
+*/
 rmw_qos_profile_t qos_profile_imu{
     RMW_QOS_POLICY_HISTORY_KEEP_LAST,
     2000,
-    RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
-    RMW_QOS_POLICY_DURABILITY_VOLATILE,
+    RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT, // 不保证每个消息到达接收端，但保证实时性
+    RMW_QOS_POLICY_DURABILITY_VOLATILE, 
     RMW_QOS_DEADLINE_DEFAULT,
     RMW_QOS_LIFESPAN_DEFAULT,
     RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT,
@@ -447,7 +453,9 @@ auto qos_imu = rclcpp::QoS(
         qos_profile_imu.depth
     ),
     qos_profile_imu);
-
+/**
+ * @details lidar原始数据topic的QoS
+*/
 rmw_qos_profile_t qos_profile_lidar{
     RMW_QOS_POLICY_HISTORY_KEEP_LAST,
     5,
