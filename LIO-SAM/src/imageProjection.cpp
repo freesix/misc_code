@@ -40,14 +40,14 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(OusterPointXYZIRT,
 // 将VelodynePointXYZIRT作为通用的点云数据类型
 using PointXYZIRT = VelodynePointXYZIRT;
 
-const int queueLength = 2000; // 队列长度
+const int queueLength = 2000; // imu数据队列长度
 
 class ImageProjection : public ParamServer
 {
 private:
 
-    std::mutex imuLock;
-    std::mutex odoLock;
+    std::mutex imuLock; // imu数据队列锁
+    std::mutex odoLock; // imu里程计队列锁
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subLaserCloud; // 雷达消息订阅器
     rclcpp::CallbackGroup::SharedPtr callbackGroupLidar;  
@@ -65,15 +65,15 @@ private:
     std::deque<nav_msgs::msg::Odometry> odomQueue;
 
     std::deque<sensor_msgs::msg::PointCloud2> cloudQueue; // 原始雷达消息缓存队列
-    sensor_msgs::msg::PointCloud2 currentCloudMsg; // 当前雷达消息
-    // imu积分获得的姿态信息，用于进行点云畸变矫正
+    sensor_msgs::msg::PointCloud2 currentCloudMsg; // 从点云队列中提取出当前点云帧
+    // imu积分获得的姿态信息，用于进行点云畸变矫正(作用只有一帧雷达点云)
     double *imuTime = new double[queueLength];
     double *imuRotX = new double[queueLength];
     double *imuRotY = new double[queueLength];
     double *imuRotZ = new double[queueLength];
 
-    int imuPointerCur;
-    bool firstPointFlag;
+    int imuPointerCur; // 记录每一帧点云其中过程中的imu数据指针
+    bool firstPointFlag; // 处理第一个时，将该点旋转取逆，记录到transStartInverse中，方便后续计算
     Eigen::Affine3f transStartInverse;
 
     pcl::PointCloud<PointXYZIRT>::Ptr laserCloudIn;
@@ -81,10 +81,10 @@ private:
     pcl::PointCloud<PointType>::Ptr   fullCloud; // 完整点云
     pcl::PointCloud<PointType>::Ptr   extractedCloud; // 畸变矫正后点云
 
-    int deskewFlag;
+    int deskewFlag; // 当点云的time/t字段不可用，也就是不包含时间戳，无法进行去畸变，直接返回原始点云
     cv::Mat rangeMat; // 点云投影获得的深度图
     // 进行点云畸变矫正时需要通过imu里程计获得imu位置增量
-    bool odomDeskewFlag;
+    bool odomDeskewFlag; // 是否有合适的imu里程计数据
     float odomIncreX;
     float odomIncreY;
     float odomIncreZ;
@@ -100,7 +100,18 @@ private:
 public:
     ImageProjection(const rclcpp::NodeOptions & options) :
             ParamServer("lio_sam_imageProjection", options), deskewFlag(0)
-    {
+    {   
+        /*
+        这里区别于普通的监听器在于使用ROS2的callbackGroup来指定下面三个callback都是不可并行的MutuallyExclusive.
+        MutuallyExclusive 保证了所有缓存队列都是时间有序的.
+        PS:根据ROS2的文档，没有指定callbackGroup的回调函数会注册到默认的callbackGroup，
+        默认的callbackGroup本身就是Mutually Exclusive CallbackGroups，但是这样多个callback就没法并行执行。
+        期望不同的callback可以并行执行，但是相同的callback不并行，推荐的做法就是将不同的callback注册到不同的
+        Mutually Exclusive CallbackGroups
+        + 关于ROS2的执行器Executors： https://docs.ros.org/en/foxy/Concepts/About-Executors.html
+        + Using Callback Groups: https://docs.ros.org/en/foxy/How-To-Guides/Using-callback-groups.html
+        */
+        // 我的理解就是将这三个callback注册到不同的callbackGroup中，保证并行。但同一个callbackGroup中的callback不并行
         callbackGroupLidar = create_callback_group(
             rclcpp::CallbackGroupType::MutuallyExclusive);
         callbackGroupImu = create_callback_group(
@@ -132,7 +143,7 @@ public:
             "lio_sam/deskew/cloud_deskewed", 1);
         pubLaserCloudInfo = create_publisher<lio_sam::msg::CloudInfo>(
             "lio_sam/deskew/cloud_info", qos);
-
+        // 为动态指针和动态数组分配内存，初始化指针，否则会报错
         allocateMemory();
         resetParameters();
 
@@ -146,7 +157,7 @@ public:
         fullCloud.reset(new pcl::PointCloud<PointType>());
         extractedCloud.reset(new pcl::PointCloud<PointType>());
 
-        fullCloud->points.resize(N_SCAN*Horizon_SCAN);
+        fullCloud->points.resize(N_SCAN*Horizon_SCAN); // 最大点云数量
 
         cloudInfo.start_ring_index.assign(N_SCAN, 0);
         cloudInfo.end_ring_index.assign(N_SCAN, 0);
@@ -156,7 +167,10 @@ public:
 
         resetParameters();
     }
-
+    /**
+     * @brief 重置参数
+     * @details 重置参数，处理完每帧lidar数据都要重置这些参数
+    */
     void resetParameters()
     {
         laserCloudIn->clear(); // 雷达点云信息清空
@@ -184,7 +198,7 @@ public:
      */
     void imuHandler(const sensor_msgs::msg::Imu::SharedPtr imuMsg)
     {
-        sensor_msgs::msg::Imu thisImu = imuConverter(*imuMsg); // 将imu消息转换为雷达坐标系下
+        sensor_msgs::msg::Imu thisImu = imuConverter(*imuMsg); // 将imu消息转换为雷达坐标系下(仅旋转对齐)
 
         std::lock_guard<std::mutex> lock1(imuLock);
         imuQueue.push_back(thisImu); // 缓存转换后的imu数据
@@ -207,7 +221,7 @@ public:
         // cout << "roll: " << imuRoll << ", pitch: " << imuPitch << ", yaw: " << imuYaw << endl << endl;
     }
     /**
-     * @brief 缓存imu里程计增量信息
+     * @brief 缓存imu里程计信息，来自imuPreintegration发布的imu里程计
      */
     void odometryHandler(const nav_msgs::msg::Odometry::SharedPtr odometryMsg)
     {
@@ -220,32 +234,32 @@ public:
      */
     void cloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr laserCloudMsg)
     {
-        if (!cachePointCloud(laserCloudMsg))
+        if (!cachePointCloud(laserCloudMsg)) // 提取、转换点云为统一格式
             return;
 
-        if (!deskewInfo())
+        if (!deskewInfo()) // 从imu数据和imu里程计数据中提取去畸变信息
             return;
 
-        projectPointCloud();
+        projectPointCloud(); // 当前帧激光点云去运动畸变矫正
 
-        cloudExtraction();
+        cloudExtraction(); // 提取有效激光点，并整备发布的cloud_info数据包
 
-        publishClouds();
+        publishClouds(); // 发布当前帧矫正后点云，有效点和其它信息
 
-        resetParameters();
+        resetParameters(); // 重置参数，接受每帧lidar数据都要重置这些参数
     }
 
     bool cachePointCloud(const sensor_msgs::msg::PointCloud2::SharedPtr& laserCloudMsg)
     {
         // cache point cloud
         cloudQueue.push_back(*laserCloudMsg);
-        if (cloudQueue.size() <= 2)
+        if (cloudQueue.size() <= 2) // 点云队列帧数小于2
             return false;
 
         // convert cloud
-        // 将雷达点云消息转换为pcl点云数据
+        // 从点云队列中获取最早的数据，使用std::move将对象转为右值引用，避免拷贝
         currentCloudMsg = std::move(cloudQueue.front()); // 获取队列第一个消息
-        cloudQueue.pop_front(); 
+        cloudQueue.pop_front(); // 弹出已经获取的消息
         // 判断sensor类型
         // 如果为一下两种则将ROS消息类型转换为pcl类型
         if (sensor == SensorType::VELODYNE || sensor == SensorType::LIVOX)
@@ -279,7 +293,7 @@ public:
 
         // get timestamp
         cloudHeader = currentCloudMsg.header; // 消息头包含这个消息生成时间(采集时间)，该数据的坐标系，序列号(验证数据是否丢失)
-        timeScanCur = stamp2Sec(cloudHeader.stamp); //时间
+        timeScanCur = stamp2Sec(cloudHeader.stamp); //点云msg中header时间作为此帧开始时间
         timeScanEnd = timeScanCur + laserCloudIn->points.back().time; // 结束时间
 
         // check dense flag
@@ -311,14 +325,15 @@ public:
         }
 
         // check point time
+        // 检查点云点是否有时间戳，没有则不去畸变，直接用原始点云，但会导致系统漂移
         if (deskewFlag == 0) // 没有去畸变
         {
             deskewFlag = -1;
             for (auto &field : currentCloudMsg.fields)
             {
                 if (field.name == "time" || field.name == "t")
-                {
-                    deskewFlag = 1; // 当雷达点云信息内包含时间戳字段，则设置去畸变标志位为1
+                {   
+                    deskewFlag = 1; // 当雷达点云信息内包含时间戳字段，则设置去畸变标志位为1，否则为-1不去畸变
                     break;
                 }
             }
@@ -328,14 +343,23 @@ public:
 
         return true;
     }
-
+    /**
+     * @brief 从imu数据和imu里程计数据中提取去畸变信息
+     * imu数据：
+     *  1. 遍历当前激光帧起止时间范围内的imu数据，初始时刻对应imu的姿态角RPY设为当前帧的初始姿态角
+     *  2. 用角速度、时间积分，计算每一时刻相对初始值的旋转量，初始时刻旋转为0
+     * imu里程计数据：
+     *  1. 遍历当前激光帧起止时间范围内的imu里程计数据，初始时刻对应imu里程计的位姿设为当前帧的初始位姿
+     *  2. 用起始时刻对应的imu里程计数据，计算相对位姿变换，保存平移增量
+    */
     bool deskewInfo()
     {
         std::lock_guard<std::mutex> lock1(imuLock);
         std::lock_guard<std::mutex> lock2(odoLock);
 
         // make sure IMU data available for the scan
-        // 如果IMU数据为空，IMU开始时间大于激光扫描时间，(后面一个条件不理解)
+        // 如果IMU数据为空，IMU开始时间大于激光扫描时间，imu队列中最后一帧时间小于激光扫描结束时间都返回false
+        // 保证了imu数据对当前帧起始时间内的全覆盖，因为去畸变必须依赖高频的imu数据
         if (imuQueue.empty() ||
             stamp2Sec(imuQueue.front().header.stamp) > timeScanCur ||
             stamp2Sec(imuQueue.back().header.stamp) < timeScanEnd)
@@ -344,9 +368,9 @@ public:
             return false;
         }
         // 通过积分获取当前雷达帧扫描开始和结束时间戳内的imu姿态信息
-        imuDeskewInfo(); // IMU去畸变
+        imuDeskewInfo(); // 从imu队列中计算去畸变信息
 
-        odomDeskewInfo();
+        odomDeskewInfo(); // 从imu里程计中计算去畸变信息
 
         return true;
     }
@@ -411,7 +435,7 @@ public:
 
         if (imuPointerCur <= 0)
             return;
-
+        // 用imu数据去畸变成功
         cloudInfo.imu_available = true;
     }
 
@@ -466,6 +490,13 @@ public:
         cloudInfo.odom_available = true;
 
         // get end odometry at the end of the scan
+        // 是否使用IMU里程计数据对点云去畸变的标志位
+        // 前面找到了点云起始时刻的IMU里程计，只有在同时找到结束时刻的IMU里程计数据，才可以
+        // 利用时间插值算出每一个点对应时刻的位姿做去畸变
+        // 注意：！在官方代码中，最后并没有使用IMU里程计数据做去畸变。所以这个标志位世纪没有被使用，
+        // 下面的这些代码实际上也没有被使用到
+        // 为什么没有使用IMU里程计做去畸变处理？
+        // - 原代码中的注释写的是速度较低的情况下不需要做平移去畸变
         odomDeskewFlag = false;
 
         if (stamp2Sec(odomQueue.back().header.stamp) < timeScanEnd)
@@ -498,7 +529,7 @@ public:
         float rollIncre, pitchIncre, yawIncre;
         // 这句代码是从仿射变换矩阵中获得位姿的增量变化，包括位移和欧拉角增量
         pcl::getTranslationAndEulerAngles(transBt, odomIncreX, odomIncreY, odomIncreZ, rollIncre, pitchIncre, yawIncre);
-
+        // 设置里程计去畸变标志为true，标志后面可以用imu里程计数据做去畸变
         odomDeskewFlag = true;
     }
     /**
@@ -514,10 +545,10 @@ public:
         while (imuPointerFront < imuPointerCur)
         {
             if (pointTime < imuTime[imuPointerFront]) // 如果pointTime小于imuPointerFront帧数对应的imu时间
-                break;                                // 意思就是找到刚好大于pointTime的那一帧
+                break;                                // 意思就是找到刚好大于pointTime的那一帧imu
             ++imuPointerFront;
         }
-        
+        // 这个if条件可能是最后一个imu时间戳依然小于雷达点的时间戳 
         if (pointTime > imuTime[imuPointerFront] || imuPointerFront == 0) // 这里就是遍历完imu时间，都还没到pointTime 直接返回最近的
         {
             *rotXCur = imuRotX[imuPointerFront];
@@ -533,12 +564,18 @@ public:
         }
     }
     /**
-     * @brief 如果传感器相对移动比较缓慢，则该移动对于点云畸变矫正的影响较小，直接将移动量置为0，影响不大
-     */
+     * @brief 根据某一个点的时间戳从IMU里程计去畸变信息列表中找到对应的平移。
+     * 这个函数根据时间间隔对平移量进行插值得到起止时间段之间任意时刻的位移
+     * 
+     * @param relTime 点云中某一个点的time字段（相对于起始点的时间）
+     * @param poseXCur 输出的X轴方向平移量
+     * @param poseYCur 输出的Y轴方向平移量
+     * @param poseZCur 输出的Z轴方向平移量
+    */
     void findPosition(double relTime, float *posXCur, float *posYCur, float *posZCur)
-    {
+    {   // 初始化为0
         *posXCur = 0; *posYCur = 0; *posZCur = 0;
-
+        // 下面全注释掉是因为作者认为在慢速运动下，不需要做平移去畸变，也就是前面的用imu里程计数据做去畸变的标志位在下面没有被使用
         // If the sensor moves relatively slow, like walking speed, positional deskew seems to have little benefits. Thus code below is commented.
 
         // if (cloudInfo.odomAvailable == false || odomDeskewFlag == false)
@@ -553,6 +590,11 @@ public:
     /**
      * @brief 激光运动畸变矫正、利用当前帧起止时刻之间的imu数据计算旋转增量
      * imu里程计数据计算平移增量、进而将每一时刻激光点位置变换到第一个激光点坐标系下面，进行运动补偿
+     *  1.找到该点对应的旋转
+     *  2.找到该点对应的平移
+     *  3.坐标变换
+     * @param point 点云中的一个点
+     * @param relTime 点云中的一个点的time字段（相对于起始点的时间）
     */
     PointType deskewPoint(PointType *point, double relTime)
     {
@@ -570,7 +612,7 @@ public:
         // 这里的firstPointFlag来源于resetParameters函数，而resetParameters函数每次ros调用
         // cloudHandler都会启动
         if (firstPointFlag == true)
-        {   // 计算此时刻变换矩阵的逆，意思是计算第一个点相对于世界坐标系的坐标变换
+        {   // 计算此时刻变换矩阵的逆，意思是计算第一个点相对于世界坐标系的位姿
             transStartInverse = (pcl::getTransformation(posXCur, posYCur, posZCur, rotXCur, rotYCur, rotZCur)).inverse();
             firstPointFlag = false;
         }
@@ -580,7 +622,7 @@ public:
         Eigen::Affine3f transFinal = pcl::getTransformation(posXCur, posYCur, posZCur, rotXCur, rotYCur, rotZCur);
         // 第一个点相对于世界坐标系x当前点相对于世界坐标系变换=当前点相对于第一个点在世界坐标系的变换
         Eigen::Affine3f transBt = transStartInverse * transFinal;
-
+        // 这里用位姿变换乘上每个点的坐标，进行每个点的坐标变换去畸变
         PointType newPoint;
         newPoint.x = transBt(0,0) * point->x + transBt(0,1) * point->y + transBt(0,2) * point->z + transBt(0,3);
         newPoint.y = transBt(1,0) * point->x + transBt(1,1) * point->y + transBt(1,2) * point->z + transBt(1,3);
@@ -589,7 +631,12 @@ public:
 
         return newPoint;
     }
-
+    /**
+     * @brief 执行点云去畸变
+     * @details 1. 检查激光点距离，扫描线是否合规
+     *          2. 单点去畸变 
+     *          3. 保存激光点
+    */
     void projectPointCloud()
     {
         int cloudSize = laserCloudIn->points.size();
@@ -646,6 +693,8 @@ public:
     }
     /**
      * @brief 提取点云，并不是所有处理好的点都放进cloudInfo，而是剔除前五个点和后五个点
+     * 不是真正的删除，而是将start_ring_index索引前移5个，end_ring_index索引后移5个
+     * 因为计算曲率的时候没法计算前五个点和后五个点的曲率
      */
     void cloudExtraction()
     {
