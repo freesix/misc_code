@@ -529,9 +529,10 @@ public:
         if (!imuQueImu.empty())
         {
             // reset bias use the newly optimized bias
-            // 
+            // 将偏置优化器优化出的最新偏差重置到imu预积分器里
             imuIntegratorImu_->resetIntegrationAndSetBias(prevBiasOdom);
             // integrate imu message from the beginning of this optimization
+            // 将imu队列中从当前雷达里程计之后的imu数据进行积分，后续每个新来的imu数据可以直接进行积分
             for (int i = 0; i < (int)imuQueImu.size(); ++i)
             {
                 sensor_msgs::msg::Imu *thisImu = &imuQueImu[i];
@@ -544,12 +545,15 @@ public:
             }
         }
 
-        ++key;
-        doneFirstOpt = true;
+        ++key; // 对因子图的当前索引加1
+        doneFirstOpt = true; // 设置首次优化标志位为帧，如果没有这一段代码先执行，imuHandler无法对新来的imu数据进行积分
     }
     /**
-     * @brief 检测积分条件是否合适，是否需要重新积分
-     */
+     * @brief 检查优化器优化结果，当优化出的速度过快（大于30），或者Bias过大，认为优化或者某个环节出现问题，重置优化器
+     * 
+     * @param velCur 当前优化出的速度值
+     * @param biasCur 当前优化出的bias
+    */
     bool failureDetection(const gtsam::Vector3& velCur, const gtsam::imuBias::ConstantBias& biasCur)
     {
         Eigen::Vector3f vel(velCur.x(), velCur.y(), velCur.z());
@@ -569,7 +573,16 @@ public:
 
         return false;
     }
-
+    /**
+     * 2. Imu数据处理回调函数
+     *  这里是实际做实时的IMU里程计计算的地方，但由于预积分器都在odomHandler中被处理好了，因此这里可以直接对每一个新到来的IMU数据进行积分
+     *  2.1 加锁，对新来的IMU数据放入两个队列（imuQueOpt,imuQueImu)
+     *  2.2 对IMU数据直接使用imuIntegratorImu_进行积分，并使用上一时刻的状态预测当前状态（积分结果）
+     *  2.3 构建发布数据包，发布IMU里程计数据
+     * 注意：
+     *  1. 这个回调函数和odomHandler被同一把锁保护，保证了对预积分器做重置时不会出现数据错乱问题。
+     *  2. 所有对积分的处理都是先将旋转对齐到lidar坐标系，但是平移到IMU中心
+    */
     void imuHandler(const sensor_msgs::msg::Imu::SharedPtr imu_raw)
     {
         std::lock_guard<std::mutex> lock(mtx);
