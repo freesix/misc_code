@@ -53,41 +53,41 @@ public:
 
     // gtsam
     NonlinearFactorGraph gtSAMgraph; // 非线性因子图
-    Values initialEstimate; 
-    Values optimizedEstimate;
-    ISAM2 *isam;
-    Values isamCurrentEstimate;
-    Eigen::MatrixXd poseCovariance;
+    Values initialEstimate;  // 因子图初始变量
+    Values optimizedEstimate; 
+    ISAM2 *isam; // 非线性优化器
+    Values isamCurrentEstimate; // 优化器当前优化结果
+    Eigen::MatrixXd poseCovariance; // 当前优化结果的位姿反差，该位姿方差在GPS因子中用到，如果该方差较小，说明优化结果好，即使加入gps也不会将gps因子加入因子图
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudSurround;
-    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubLaserOdometryGlobal;
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubLaserOdometryGlobal; // 发布雷达里程计
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubLaserOdometryIncremental;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubKeyPoses;
-    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubKeyPoses; 
+    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath; // 发布路径
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubHistoryKeyFrames;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubIcpKeyFrames;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubRecentKeyFrames;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubRecentKeyFrame;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubCloudRegisteredRaw;
-    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pubLoopConstraintEdge;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pubLoopConstraintEdge; // 发布回环
 
-    rclcpp::Service<lio_sam::srv::SaveMap>::SharedPtr srvSaveMap;
-    rclcpp::Subscription<lio_sam::msg::CloudInfo>::SharedPtr subCloud;
-    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subGPS;
+    rclcpp::Service<lio_sam::srv::SaveMap>::SharedPtr srvSaveMap; // 保存地图服务接口
+    rclcpp::Subscription<lio_sam::msg::CloudInfo>::SharedPtr subCloud; // 订阅从featureExtraction发布出来的点云信息集合
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subGPS; // 订阅gps里程计(实际是经过robot_localization计算后的gps位姿)
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr subLoop;
 
-    std::deque<nav_msgs::msg::Odometry> gpsQueue;
-    lio_sam::msg::CloudInfo cloudInfo;
+    std::deque<nav_msgs::msg::Odometry> gpsQueue; // gps消息队列
+    lio_sam::msg::CloudInfo cloudInfo; // 当前点云信息
 
     vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFrames;// 历史所有关键帧的角点集合(降采样)
     vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFrames; // 历史所有关键帧的平面点集合(降采样)
     
-    pcl::PointCloud<PointType>::Ptr cloudKeyPoses3D; // 历史关键帧位姿(位置)
+    pcl::PointCloud<PointType>::Ptr cloudKeyPoses3D; // 历史关键帧位姿(位置)x,y,z
     // 历史关键帧位姿
-    pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D;
-    pcl::PointCloud<PointType>::Ptr copy_cloudKeyPoses3D;
-    pcl::PointCloud<PointTypePose>::Ptr copy_cloudKeyPoses6D;
+    pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D; // 历史关键帧位姿(位置+姿态)x,y,z,roll,pitch,yaw
+    pcl::PointCloud<PointType>::Ptr copy_cloudKeyPoses3D; // 和cloudKeyPoses3D一样，只是用于回环
+    pcl::PointCloud<PointTypePose>::Ptr copy_cloudKeyPoses6D; // 和cloudKeyPoses6D一样，只是用于回环
     // 当前激光帧角点集合
     pcl::PointCloud<PointType>::Ptr laserCloudCornerLast; // corner feature set from odoOptimization
     // 当前激光帧平面点集合
@@ -107,45 +107,51 @@ public:
     std::vector<PointType> laserCloudOriSurfVec; // surf point holder for parallel computation
     std::vector<PointType> coeffSelSurfVec;
     std::vector<bool> laserCloudOriSurfFlag;
-
+    // 变换到odom坐标下的关键帧点云字典，为了加速缓存历史关键帧变换后的点云
     map<int, pair<pcl::PointCloud<PointType>, pcl::PointCloud<PointType>>> laserCloudMapContainer;
-    // 局部map的角点集合
+    // 局部map的角点集合(odom坐标系)
     pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMap;
-    // 局部map的平面点集合
+    // 局部map的平面点集合(odom坐标系)
     pcl::PointCloud<PointType>::Ptr laserCloudSurfFromMap;
     // 局部map的角点集合，降采样
     pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMapDS;
     // 局部map的平面点集合，降采样
     pcl::PointCloud<PointType>::Ptr laserCloudSurfFromMapDS;
     // 局部关键帧构建的map点云，对应kd树，用于scan-to-map匹配
-    pcl::KdTreeFLANN<PointType>::Ptr kdtreeCornerFromMap;
-    pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurfFromMap;
+    pcl::KdTreeFLANN<PointType>::Ptr kdtreeCornerFromMap; // 做点云匹配时构建的角点kd树
+    pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurfFromMap; // 做点云匹配时构建的平面点kd树
 
-    pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurroundingKeyPoses;
-    pcl::KdTreeFLANN<PointType>::Ptr kdtreeHistoryKeyPoses;
+    pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurroundingKeyPoses; // 在构建局部地图时挑选的周围关键帧的三维姿态kd树
+    pcl::KdTreeFLANN<PointType>::Ptr kdtreeHistoryKeyPoses; // 在构建局部地图时挑选的邻近时间关键帧的三维姿态kd树
     // 降采样
-    pcl::VoxelGrid<PointType> downSizeFilterCorner;
-    pcl::VoxelGrid<PointType> downSizeFilterSurf;
-    pcl::VoxelGrid<PointType> downSizeFilterICP;
+    pcl::VoxelGrid<PointType> downSizeFilterCorner; // 角点点云降采样器
+    pcl::VoxelGrid<PointType> downSizeFilterSurf; // 平面点云降采样器
+    pcl::VoxelGrid<PointType> downSizeFilterICP; // 做回环检测ICP时的点云降采样器
     pcl::VoxelGrid<PointType> downSizeFilterSurroundingKeyPoses; // for surrounding key poses of scan-to-map optimization
 
-    rclcpp::Time timeLaserInfoStamp;
-    double timeLaserInfoCur;
-
+    rclcpp::Time timeLaserInfoStamp; // 当前激光帧时间戳
+    double timeLaserInfoCur; // 当前激光帧时间戳(double类型)
+    /**
+     * 注意注意注意！！这是一个非常重要的变量，transformTobeMapped[6]缓存的是当前帧
+     * 的`最新`位姿x,y,z,roll,pitch,yaw。无论在哪个环节，对位姿的更新都会被缓存到这个
+     * 变量供给下一个环节使用！！
+    */
     float transformTobeMapped[6];
 
-    std::mutex mtx;
-    std::mutex mtxLoopInfo;
+    std::mutex mtx; // 点云信息回调锁
+    std::mutex mtxLoopInfo; // 回环检测线程锁
 
+    // 标识点云匹配的结果是否较差，当isDegenerate为true的时候，标识本次的点云匹配结果较差，
+    // 会在雷达里程计的协方差中置位，在imuPreintegration中会根据这个标志位选择因子图的噪声模型
     bool isDegenerate = false;
     Eigen::Matrix<float, 6, 6> matP;
-    // 局部map角点数量
+    // 降采样后局部map角点数量
     int laserCloudCornerFromMapDSNum = 0;
-    // 局部map平面点数量
+    // 降采样后局部map平面点数量
     int laserCloudSurfFromMapDSNum = 0;
-    // 当前帧角点数量
+    // 降采样后当前帧角点数量
     int laserCloudCornerLastDSNum = 0;
-    // 当前帧平面点数量
+    // 降采样后当前帧平面点数量
     int laserCloudSurfLastDSNum = 0;
 
     bool aLoopIsClosed = false;
