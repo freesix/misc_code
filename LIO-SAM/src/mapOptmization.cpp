@@ -153,23 +153,24 @@ public:
     int laserCloudCornerLastDSNum = 0;
     // 降采样后当前帧平面点数量
     int laserCloudSurfLastDSNum = 0;
-
+    // 当新的回环节点或者gps信息被加入来矫正位置，这个变量被置为true
     bool aLoopIsClosed = false;
     map<int, int> loopIndexContainer; // from new to old
-    vector<pair<int, int>> loopIndexQueue;
-    vector<gtsam::Pose3> loopPoseQueue;
-    vector<gtsam::noiseModel::Diagonal::shared_ptr> loopNoiseQueue;
-    deque<std_msgs::msg::Float64MultiArray> loopInfoVec;
+    vector<pair<int, int>> loopIndexQueue; // 所有回环配对关系
+    vector<gtsam::Pose3> loopPoseQueue; // 所有回环的姿态配对关系
+    vector<gtsam::noiseModel::Diagonal::shared_ptr> loopNoiseQueue; // 每个回环因子的噪声模型
+    deque<std_msgs::msg::Float64MultiArray> loopInfoVec; // 全局关键帧轨迹
 
-    nav_msgs::msg::Path globalPath;
-    // 当前帧位姿
+    nav_msgs::msg::Path globalPath; // 全局关键帧轨迹
+    // 当前帧位姿(用来做点云变换)
     Eigen::Affine3f transPointAssociateToMap;
-    // 前一帧位姿
+    // 前一帧位姿(incementaOdometryAffineFront在每次点云进来时缓存上一次的位姿)
     Eigen::Affine3f incrementalOdometryAffineFront;
-    // 当前帧位姿
+    // 当前帧点云优化后的最终位姿
+    // incrementalOdometryAffineBack和Front可以计算出一个增量，应用到上一次的雷达里程计
     Eigen::Affine3f incrementalOdometryAffineBack;
 
-    std::unique_ptr<tf2_ros::TransformBroadcaster> br;
+    std::unique_ptr<tf2_ros::TransformBroadcaster> br; // tf发布器
     // 构造函数，并初始化ParamServer类
     mapOptimization(const rclcpp::NodeOptions & options) : ParamServer("lio_sam_mapOptimization", options)
     {
@@ -373,8 +374,8 @@ public:
 
         std::lock_guard<std::mutex> lock(mtx);
         // mapping执行频率控制
-        static double timeLastProcessing = -1;
-        // 判断两帧的时间间隔是否大于一定间隔
+        static double timeLastProcessing = -1; // 记录上一帧时间戳
+        // 判断两帧的时间间隔是否大于一定间隔，两帧间隔大于mappingProcessInterval才执行
         if (timeLaserInfoCur - timeLastProcessing >= mappingProcessInterval)
         {
             timeLastProcessing = timeLaserInfoCur; // 更新上一次的时间戳
@@ -411,17 +412,21 @@ public:
             // 更新因子图中所有变量节点的位姿，也就是所有历史关键帧的位姿，更新里程计轨迹
             correctPoses(); // 优化后的位姿进行更新，矫正位姿
 
-            publishOdometry(); // 发布里程计信息
+            publishOdometry(); // 发布激光里程计信息
             // 发布里程计、点云、轨迹
             publishFrames();  
         }
     }
-
+    /**
+     * GPS数据回调函数
+     * 1. liosam用的不是原始的GPS传感器出来的数据，而是经过robot_localization计算后
+     * 的GPS里程计。要使用GPS里程计则必须使用9轴IMU（带地磁）
+    */
     void gpsHandler(const nav_msgs::msg::Odometry::SharedPtr gpsMsg)
     {
         gpsQueue.push_back(*gpsMsg);
     }
-    // IMU坐标转换为odom坐标
+    // 将雷达坐标系下的点云转换到odom坐标系下
     void pointAssociateToMap(PointType const * const pi, PointType * const po)
     {
         po->x = transPointAssociateToMap(0,0) * pi->x + transPointAssociateToMap(0,1) * pi->y + transPointAssociateToMap(0,2) * pi->z + transPointAssociateToMap(0,3);
@@ -450,29 +455,42 @@ public:
         }
         return cloudOut;
     }
-
+    /**
+     * 将PointTypePose（x,y,z,roll,pitch,yaw）表示的6D位姿转换成gtsam位姿的实用函数
+     * 这里似乎放在utility中更为合适
+    */
     gtsam::Pose3 pclPointTogtsamPose3(PointTypePose thisPoint)
     {
         return gtsam::Pose3(gtsam::Rot3::RzRyRx(double(thisPoint.roll), double(thisPoint.pitch), double(thisPoint.yaw)),
                                   gtsam::Point3(double(thisPoint.x),    double(thisPoint.y),     double(thisPoint.z)));
     }
-
+    /**
+     * 将数组表示的6D位姿（roll,pitch,yaw,x,y,z)转换成gtsam位姿的实用函数
+     * 这里似乎放在utility中更为合适
+    */
     gtsam::Pose3 trans2gtsamPose(float transformIn[])
     {
         return gtsam::Pose3(gtsam::Rot3::RzRyRx(transformIn[0], transformIn[1], transformIn[2]), 
                                   gtsam::Point3(transformIn[3], transformIn[4], transformIn[5]));
     }
-
+    /**
+     * 将PointTypePose（x,y,z,roll,pitch,yaw）表示的6D位姿转换成Eigen的转换表达
+     * 同样应该放在utility中
+    */
     Eigen::Affine3f pclPointToAffine3f(PointTypePose thisPoint)
     {
         return pcl::getTransformation(thisPoint.x, thisPoint.y, thisPoint.z, thisPoint.roll, thisPoint.pitch, thisPoint.yaw);
     }
-
+    /**
+     * 将数组表示的6D位姿（roll,pitch,yaw,x,y,z)转换成Eigen的表达
+    */
     Eigen::Affine3f trans2Affine3f(float transformIn[])
     {
         return pcl::getTransformation(transformIn[3], transformIn[4], transformIn[5], transformIn[0], transformIn[1], transformIn[2]);
     }
-
+    /**
+     * 将数组表示的6D位姿（roll,pitch,yaw,x,y,z)转换成PointTypePose
+    */
     PointTypePose trans2PointTypePose(float transformIn[])
     {
         PointTypePose thisPose6D;
@@ -484,7 +502,24 @@ public:
         thisPose6D.yaw   = transformIn[2];
         return thisPose6D;
     }
-
+    /**
+     * 可视化全局地图的独立线程
+     * @brief 由于全局地图的点数较多，且需要对多帧拼接，因此放在独立线程中运行。且频率较低（5HZ）
+     * 1. 发布全局地图点云
+     *      1）对所有关键帧3D位姿构建KD树
+     *      2）以最后一帧关键帧为索引找出一定半径范围内的所有关键帧
+     *      3）对找出的关键帧数量做降采样
+     *      4）对所有关键帧的点云做拼接（投影到地图坐标系）
+     *      5）对地图点云做降采样
+     *      6）发布全局地图点云
+     * 
+     * 2. 保存全局地图及轨迹
+     *      1）如果保存地图变量为False，直接返回
+     *      2）保存关键帧序列的3D位姿为trajectory.pcd
+     *      3）保存关键帧序列的6D位姿为transformations.pcd
+     *      4）构建全局角点地图和全局平面点地图和两者的集合全局地图
+     *      5）将全局角点地图和全局平面点地图和全局地图依次保存
+    */
     void visualizeGlobalMapThread()
     {
         rclcpp::Rate rate(0.2);
@@ -523,7 +558,15 @@ public:
         cout << "****************************************************" << endl;
         cout << "Saving map to pcd files completed" << endl;
     }
-
+    /**
+     * 发布全局地图点云，在全局地图可视化线程中调用
+     * 1. 对所有关键帧3D位姿构建KD树
+     * 2. 以最后一帧关键帧为索引找出一定半径范围内的所有关键帧
+     * 3. 对找出的关键帧数量做降采样
+     * 4. 对所有关键帧的点云做拼接（投影到地图坐标系）
+     * 5. 对地图点云做降采样
+     * 6. 发布全局地图点云
+    */
     void publishGlobalMap()
     {
         if (pubLaserCloudSurround->get_subscription_count() == 0)
@@ -582,11 +625,11 @@ public:
 
 
 
-
-
-
-
-
+    /**
+     * 回环检测独立线程
+     * 1. 由于回环检测中用到了点云匹配，较为耗时，所以独立为单独的线程运行
+     * 2. 新的回环关系被检测出来时被主线程加入因子图中优化
+    */
     void loopClosureThread()
     {
         if (loopClosureEnableFlag == false)
