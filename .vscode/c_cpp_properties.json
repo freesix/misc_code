@@ -1,0 +1,21 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/include/pcl-1.10/**",
+                "/usr/include/eigen3/**",
+                "/opt/ros/noetic/include/**",
+                "/usr/include/python3.8/**",
+                "/home/freesix/Point-LIO_WS/devel/include/**"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c17",
+            "cppStandard": "gnu++14",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}

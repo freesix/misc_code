@@ -1,0 +1,14 @@
+{
+    "files.associations": {
+        "*.launch": "xml",
+        "eigen": "cpp"
+    },
+    "python.autoComplete.extraPaths": [
+        "/home/freesix/Point-LIO_WS/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/freesix/Point-LIO_WS/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ]
+}
