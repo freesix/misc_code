@@ -20,7 +20,7 @@ TRAJECTORY_BUILDER_3D = {
   max_range = MAX_3D_RANGE,
   num_accumulated_range_data = 1,
   voxel_filter_size = 0.15,
-
+  -- 在3dslam时会有2个自适应体素滤波，一个生成高分辨率点云，一个生成低分辨率点云
   high_resolution_adaptive_voxel_filter = {
     max_length = 2.,
     min_num_points = 150,
@@ -42,6 +42,7 @@ TRAJECTORY_BUILDER_3D = {
   },
 
   ceres_scan_matcher = {
+    -- 在3D中,occupied_space_weight_0和occupied_space_weight_1参数分别与高分辨率和低分辨率滤波点云相关
     occupied_space_weight_0 = 1.,
     occupied_space_weight_1 = 6.,
     intensity_cost_function_options_0 = {
@@ -94,6 +95,7 @@ TRAJECTORY_BUILDER_3D = {
   },
 
   submaps = {
+    -- 子地图在高低两种分辨率下的参数
     high_resolution = 0.10,
     high_resolution_max_range = 20.,
     low_resolution = 0.45,

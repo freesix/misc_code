@@ -13,19 +13,20 @@
 -- limitations under the License.
 
 POSE_GRAPH = {
-  optimize_every_n_nodes = 90,
+  optimize_every_n_nodes = 90,              -- 每隔多少个节点进行一次优化
   constraint_builder = {
     sampling_ratio = 0.3,
     max_constraint_distance = 15.,
     min_score = 0.55,
     global_localization_min_score = 0.6,
-    loop_closure_translation_weight = 1.1e4,
-    loop_closure_rotation_weight = 1e5,
-    log_matches = true,
+    loop_closure_translation_weight = 1.1e4,-- 回环检测平移残差的权重
+    loop_closure_rotation_weight = 1e5,     -- 回环检测旋转残差的权重
+    log_matches = true,                     -- 是否打印约束计算的log
+    -- 分支定界算法的2d粗匹配器
     fast_correlative_scan_matcher = {
-      linear_search_window = 7.,
-      angular_search_window = math.rad(30.),
-      branch_and_bound_depth = 7,
+      linear_search_window = 7.,            -- 线速度窗
+      angular_search_window = math.rad(30.),-- 角速度
+      branch_and_bound_depth = 7,           -- 树的深度
     },
     ceres_scan_matcher = {
       occupied_space_weight = 20.,
@@ -85,7 +86,7 @@ POSE_GRAPH = {
   },
   max_num_final_iterations = 200,
   global_sampling_ratio = 0.003,
-  log_residual_histograms = true,
+  log_residual_histograms = true,                -- 打印残差直方图
   global_constraint_search_after_n_seconds = 10.,
   --  overlapping_submaps_trimmer_2d = {
   --    fresh_submaps_count = 1,
