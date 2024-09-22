@@ -49,31 +49,33 @@ namespace {
 
 void Run() {
   rclcpp::Node::SharedPtr cartographer_node = rclcpp::Node::make_shared("cartographer_node");
-  constexpr double kTfBufferCacheTimeInSeconds = 10.;
-
+  constexpr double kTfBufferCacheTimeInSeconds = 10.; // 常量，且在编译时计算出值
+  // 创建一个tf2_ros::Buffer的指针对象，缓存tf数据，缓存时间段为10秒
   std::shared_ptr<tf2_ros::Buffer> tf_buffer =
       std::make_shared<tf2_ros::Buffer>(
         cartographer_node->get_clock(),
         tf2::durationFromSec(kTfBufferCacheTimeInSeconds),
         cartographer_node);
-
+  // 创建一个tf监听器，将变换信息存储到tf_buffer中
   std::shared_ptr<tf2_ros::TransformListener> tf_listener =
       std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
-
+  // 解析配置，分别放到node_options和trajectory_options中
   NodeOptions node_options;
   TrajectoryOptions trajectory_options;
   std::tie(node_options, trajectory_options) =
       LoadOptions(FLAGS_configuration_directory, FLAGS_configuration_basename);
-
+  // 初始化建图接口
   auto map_builder =
     cartographer::mapping::CreateMapBuilder(node_options.map_builder_options);
+  // 申明一个cartographer_ros::Node对象
   auto node = std::make_shared<cartographer_ros::Node>(
     node_options, std::move(map_builder), tf_buffer, cartographer_node,
     FLAGS_collect_metrics);
+  // 加载序列化文件.pdstream中的slam状态，具体是那些需要看代码
   if (!FLAGS_load_state_filename.empty()) {
     node->LoadState(FLAGS_load_state_filename, FLAGS_load_frozen_state);
   }
-
+  // 开始轨迹生成
   if (FLAGS_start_trajectory_with_default_topics) {
     node->StartTrajectoryWithDefaultTopics(trajectory_options);
   }
@@ -82,7 +84,7 @@ void Run() {
 
   node->FinishAllTrajectories();
   node->RunFinalOptimization();
-
+  // 保存slam序列化信息
   if (!FLAGS_save_state_filename.empty()) {
     node->SerializeState(FLAGS_save_state_filename,
                         true /* include_unfinished_submaps */);
