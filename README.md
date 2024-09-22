@@ -7,3 +7,5 @@
 * Max-Clique：毕业论文的代码
 * Point-GNN.pytorhc-master：Point-GNN代码，pytorch版
 * Point-LIO：此篇论文的代码，打了注释
+
+**为了方便管理代码，对新增加的开发库或者注释代码用分支的方式进行管理**
