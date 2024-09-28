@@ -156,7 +156,12 @@ LuaParameterDictionary::LuaParameterDictionary(
     const std::string& code, std::unique_ptr<FileResolver> file_resolver)
     : LuaParameterDictionary(code, ReferenceCount::YES,
                              std::move(file_resolver)) {}
-
+/**
+ * @brief 根据给定字符串，生成一个lua字典
+ * @param[in] code 配置文件字符串内容
+ * @param[in] reference_cout
+ * @param[in] file_resolver
+ */
 LuaParameterDictionary::LuaParameterDictionary(
     const std::string& code, ReferenceCount reference_count,
     std::unique_ptr<FileResolver> file_resolver)
@@ -170,9 +175,10 @@ LuaParameterDictionary::LuaParameterDictionary(
   luaL_openlibs(L_);
 
   lua_register(L_, "choose", LuaChoose);
+  // 将LuaInclude注册为lua的全局函数，使得lua可以调用c函数
   lua_register(L_, "include", LuaInclude);
   lua_register(L_, "read", LuaRead);
-
+  // luaL_loadstrin()函数，将一个字符串code加载为lua代码块
   CheckForLuaErrors(L_, luaL_loadstring(L_, code.c_str()));
   CheckForLuaErrors(L_, lua_pcall(L_, 0, 1, 0));
   CheckTableIsAtTopOfStack(L_);
