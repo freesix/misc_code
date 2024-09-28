@@ -183,6 +183,8 @@ class Node {
 
   absl::Mutex mutex_;
   std::unique_ptr<cartographer_ros::metrics::FamilyFactory> metrics_registry_;
+  // GUARDED_BY是数据成员的属性，该属性声明数据成员受给定功能保护
+  // 对数据的读操作需要共享访问，而写操作需要互斥访问
   std::shared_ptr<MapBuilderBridge> map_builder_bridge_ GUARDED_BY(mutex_);
 
   rclcpp::Node::SharedPtr node_;

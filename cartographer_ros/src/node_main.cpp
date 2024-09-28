@@ -62,12 +62,12 @@ void Run() {
   // 解析配置，分别放到node_options和trajectory_options中
   NodeOptions node_options;
   TrajectoryOptions trajectory_options;
-  std::tie(node_options, trajectory_options) =
+  std::tie(node_options, trajectory_options) =  // std::tie只接受元组返回
       LoadOptions(FLAGS_configuration_directory, FLAGS_configuration_basename);
   // 初始化建图接口
   auto map_builder =
     cartographer::mapping::CreateMapBuilder(node_options.map_builder_options);
-  // 申明一个cartographer_ros::Node对象
+  // 申明一个cartographer_ros::Node对象，将ROS2的topic数据传入cartogarpher(MapBuilder)
   auto node = std::make_shared<cartographer_ros::Node>(
     node_options, std::move(map_builder), tf_buffer, cartographer_node,
     FLAGS_collect_metrics);
@@ -75,14 +75,15 @@ void Run() {
   if (!FLAGS_load_state_filename.empty()) {
     node->LoadState(FLAGS_load_state_filename, FLAGS_load_frozen_state);
   }
-  // 开始轨迹生成
+  // 使用默认topic开始轨迹生成
   if (FLAGS_start_trajectory_with_default_topics) {
     node->StartTrajectoryWithDefaultTopics(trajectory_options);
   }
 
   rclcpp::spin(cartographer_node);
-
+  // 结束所有处于活动状态的轨迹
   node->FinishAllTrajectories();
+  // 当所有的轨迹结束时，再执行一次全局优化
   node->RunFinalOptimization();
   // 保存slam序列化信息
   if (!FLAGS_save_state_filename.empty()) {

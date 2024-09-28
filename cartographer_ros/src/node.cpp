@@ -86,7 +86,13 @@ std::string TrajectoryStateToString(const TrajectoryState trajectory_state) {
 }
 
 }  // namespace
-
+/**
+ * @brief 申明ROS的一些topic发布器服务
+ * @param[in] node_options 节点配置项
+ * @param[in] map_builder SLAM算法的具体实现
+ * @param[in] tf_buffer tf
+ * @param[in] collect_metrics 是否启用metrics，默认不启用
+ */
 Node::Node(
     const NodeOptions& node_options,
     std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder,
@@ -99,21 +105,25 @@ Node::Node(
   tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(node_) ;
   map_builder_bridge_.reset(new cartographer_ros::MapBuilderBridge(node_options_, std::move(map_builder), tf_buffer.get()));
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(&mutex_); // 上锁
   if (collect_metrics) {
     metrics_registry_ = absl::make_unique<metrics::FamilyFactory>();
     carto::metrics::RegisterAllMetrics(metrics_registry_.get());
   }
-
+// step: 申明需要发布的topic
+  // 发布submaplist
   submap_list_publisher_ =
       node_->create_publisher<::cartographer_ros_msgs::msg::SubmapList>(
           kSubmapListTopic, 10);
+  // 发布轨迹
   trajectory_node_list_publisher_ =
       node_->create_publisher<::visualization_msgs::msg::MarkerArray>(
           kTrajectoryNodeListTopic, 10);
+    // 发布landmark_pose
   landmark_poses_list_publisher_ =
       node_->create_publisher<::visualization_msgs::msg::MarkerArray>(
           kLandmarkPosesListTopic, 10);
+    // 发布约束
   constraint_list_publisher_ =
       node_->create_publisher<::visualization_msgs::msg::MarkerArray>(
           kConstraintListTopic, 10);

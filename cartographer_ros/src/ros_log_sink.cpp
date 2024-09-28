@@ -27,17 +27,35 @@
 namespace cartographer_ros {
 
 namespace {
-
+/**
+ * @brief 根据给定文件全路径名，获取文件名字
+ * @param[in] filepath 文件全路径字符串
+ * @return 返回文件名字
+ */
 const char* GetBasename(const char* filepath) {
   const char* base = std::strrchr(filepath, '/');
   return base ? (base + 1) : filepath;
 }
 
 }  // namespace
-
+/**
+ * @brief 调用AddLogSink()函数，将ScopedRosLogSink类注册到glog中
+ */
 ScopedRosLogSink::ScopedRosLogSink() : will_die_(false) { AddLogSink(this); }
+/**
+ * @brief 析构函数，调用了RemoveLogSink()函数
+ */
 ScopedRosLogSink::~ScopedRosLogSink() { RemoveLogSink(this); }
-
+/**
+ * @brief 重载了glog中的send()方法，使用ROS_INFO进行glog消息的输出
+ * @param[in] severity 消息级别
+ * @param[in] filename 全路径文件名
+ * @param[in] base_filename 文件名
+ * @param[in] line 消息所在文件行数
+ * @param[in] tm_time 消息的时间
+ * @param[in] message 消息的本体
+ * @param[in] message_len 消息长度
+ */
 void ScopedRosLogSink::send(const ::google::LogSeverity severity,
                             const char* const filename,
                             const char* const base_filename, const int line,
@@ -75,7 +93,9 @@ void ScopedRosLogSink::send(const ::google::LogSeverity severity,
       break;
   }
 }
-
+/**
+ * @brief 当glog输出FATAL级别消息，will_die_为true，给ros一些时间暂定，用于异步的情况
+ */
 void ScopedRosLogSink::WaitTillSent() {
   if (will_die_) {
     // Give ROS some time to actually publish our message.
