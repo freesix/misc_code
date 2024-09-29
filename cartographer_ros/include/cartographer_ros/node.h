@@ -203,7 +203,7 @@ class Node {
   ::rclcpp::Service<cartographer_ros_msgs::srv::GetTrajectoryStates>::SharedPtr get_trajectory_states_server_;
   ::rclcpp::Service<cartographer_ros_msgs::srv::ReadMetrics>::SharedPtr read_metrics_server_;
 
-
+    // 控制各个传感器数据的采样频率
   struct TrajectorySensorSamplers {
     TrajectorySensorSamplers(const double rangefinder_sampling_ratio,
                              const double odometry_sampling_ratio,
@@ -216,11 +216,11 @@ class Node {
           imu_sampler(imu_sampling_ratio),
           landmark_sampler(landmark_sampling_ratio) {}
 
-    ::cartographer::common::FixedRatioSampler rangefinder_sampler;
-    ::cartographer::common::FixedRatioSampler odometry_sampler;
-    ::cartographer::common::FixedRatioSampler fixed_frame_pose_sampler;
-    ::cartographer::common::FixedRatioSampler imu_sampler;
-    ::cartographer::common::FixedRatioSampler landmark_sampler;
+    ::cartographer::common::FixedRatioSampler rangefinder_sampler; // 范围采样
+    ::cartographer::common::FixedRatioSampler odometry_sampler; // 里程计采样
+    ::cartographer::common::FixedRatioSampler fixed_frame_pose_sampler; // gps采样
+    ::cartographer::common::FixedRatioSampler imu_sampler; // imu采样
+    ::cartographer::common::FixedRatioSampler landmark_sampler; // landmark采样
   };
 
   // These are keyed with 'trajectory_id'.

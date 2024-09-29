@@ -132,11 +132,11 @@ Node::Node(
         node_->create_publisher<::geometry_msgs::msg::PoseStamped>(
             kTrackedPoseTopic, 10);
   }
-
+  // step:处理之后的点云发布器
   scan_matched_point_cloud_publisher_ =
       node_->create_publisher<sensor_msgs::msg::PointCloud2>(
         kScanMatchedPointCloudTopic, 10);
-
+  // step:发布对应名字的ROS服务
   submap_query_server_ = node_->create_service<cartographer_ros_msgs::srv::SubmapQuery>(
       kSubmapQueryServiceName,
       std::bind(
@@ -166,7 +166,7 @@ Node::Node(
       std::bind(
           &Node::handleReadMetrics, this, std::placeholders::_1, std::placeholders::_2));
 
-
+  // step:定时发布一些数据
   submap_list_timer_ = node_->create_wall_timer(
     std::chrono::milliseconds(int(node_options_.submap_publish_period_sec * 1000)),
     [this]() {
@@ -227,11 +227,15 @@ void Node::PublishSubmapList() {
   absl::MutexLock lock(&mutex_);
   submap_list_publisher_->publish(map_builder_bridge_->GetSubmapList(node_->now()));
 }
-
+/**
+ * @brief 新增一个位姿估计器(imu和里程计的融合，做一个预测)
+ * @param [in] trajectory_id 轨迹id
+ * @param [in] options 轨迹配置
+ */
 void Node::AddExtrapolator(const int trajectory_id,
                            const TrajectoryOptions& options) {
   constexpr double kExtrapolationEstimationTimeSec = 0.001;  // 1 ms
-  CHECK(extrapolators_.count(trajectory_id) == 0);
+  CHECK(extrapolators_.count(trajectory_id) == 0); // 新生成的轨迹id不应该在extrapolators_中
   const double gravity_time_constant =
       node_options_.map_builder_options.use_trajectory_builder_3d()
           ? options.trajectory_builder_options.trajectory_builder_3d_options()
@@ -239,12 +243,18 @@ void Node::AddExtrapolator(const int trajectory_id,
           : options.trajectory_builder_options.trajectory_builder_2d_options()
                 .imu_gravity_time_constant();
   extrapolators_.emplace(
+      // std::piecewise_construct 分次生成tuple的标志常量
+      // forward_as_tuple tuple的完美转发
       std::piecewise_construct, std::forward_as_tuple(trajectory_id),
       std::forward_as_tuple(
           ::cartographer::common::FromSeconds(kExtrapolationEstimationTimeSec),
           gravity_time_constant));
 }
-
+/**
+ * @brief 新生成一个传感器数据采样器
+ * @param[in] trajectory_id 轨迹id
+ * @param[in] options 参数配置
+ */
 void Node::AddSensorSamplers(const int trajectory_id,
                              const TrajectoryOptions& options) {
   CHECK(sensor_samplers_.count(trajectory_id) == 0);
@@ -385,7 +395,11 @@ void Node::PublishConstraintList() {
     constraint_list_publisher_->publish(map_builder_bridge_->GetConstraintList(node_->now()));
   }
 }
-
+/**
+ * @brief 根据配置文件，确定所有需要的topic的名字的集合
+ * @param[in] options TrajectoryOptions的配置
+ * @return 传感器的类型、topic名字的集合
+ */
 std::set<cartographer::mapping::TrajectoryBuilderInterface::SensorId>
 Node::ComputeExpectedSensorIds(const TrajectoryOptions& options) const {
   using SensorId = cartographer::mapping::TrajectoryBuilderInterface::SensorId;
@@ -427,15 +441,20 @@ Node::ComputeExpectedSensorIds(const TrajectoryOptions& options) const {
   }
   return expected_topics;
 }
-
+/**
+ * @brief 添加一个新的轨迹
+ * @param[in] options 轨迹的参数配置
+ * @return int 新生成的轨迹id
+ */
 int Node::AddTrajectory(const TrajectoryOptions& options) {
   const std::set<cartographer::mapping::TrajectoryBuilderInterface::SensorId>
-      expected_sensor_ids = ComputeExpectedSensorIds(options);
+      expected_sensor_ids = ComputeExpectedSensorIds(options); // 根据option返回期待的topic集合
+  // 调用map_builder_bridge的AddTrajectory()添加一个轨迹
   const int trajectory_id =
       map_builder_bridge_->AddTrajectory(expected_sensor_ids, options);
-  AddExtrapolator(trajectory_id, options);
-  AddSensorSamplers(trajectory_id, options);
-  LaunchSubscribers(options, trajectory_id);
+  AddExtrapolator(trajectory_id, options); // 新增一个位姿估计器
+  AddSensorSamplers(trajectory_id, options); // 新生成一个传感器数据采样器
+  LaunchSubscribers(options, trajectory_id); // 订阅话题和注册回调函数
   maybe_warn_about_topic_mismatch_timer_ = node_->create_wall_timer(
     std::chrono::milliseconds(int(kTopicMismatchCheckDelaySec * 1000)),
     [this]() {
@@ -446,7 +465,11 @@ int Node::AddTrajectory(const TrajectoryOptions& options) {
   }
   return trajectory_id;
 }
-
+/**
+ * @brief 传感器的订阅话题与注册回调函数
+ * @param[in] options 轨迹配置参数
+ * @param[in] trajectory_id 轨迹id
+ */
 void Node::LaunchSubscribers(const TrajectoryOptions& options,
                              const int trajectory_id) {
   for (const std::string& topic :
@@ -647,8 +670,8 @@ bool Node::handleStartTrajectory(
 
 void Node::StartTrajectoryWithDefaultTopics(const TrajectoryOptions& options) {
   absl::MutexLock lock(&mutex_);
-  CHECK(ValidateTrajectoryOptions(options));
-  AddTrajectory(options);
+  CHECK(ValidateTrajectoryOptions(options)); // 检查TrajectoryOptions是否存在2d或者3d轨迹的配置信息
+  AddTrajectory(options); // 添加一条轨迹
 }
 
 std::vector<

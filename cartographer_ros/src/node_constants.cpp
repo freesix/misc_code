@@ -19,7 +19,12 @@
 #include "glog/logging.h"
 
 namespace cartographer_ros {
-
+/**
+ * @brief 如果只有一个传感器，那么订阅的topic为topic，多个则为topic_1,topic_2
+ * @param[in] topic 订阅话题的名字
+ * @param[in] num_topics 传感器的个数
+ * @return 订阅话题的名字的集合
+ */
 std::vector<std::string> ComputeRepeatedTopicNames(const std::string& topic,
                                                    const int num_topics) {
   CHECK_GE(num_topics, 0);
